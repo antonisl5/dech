@@ -274,7 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         switch (data.type) {
             case 'clock':
-                content.innerHTML = `<div>12:00:00<br><small style="font-size:0.5em;">${c.timezone || 'UTC'}</small></div>`;
+                content.innerHTML = `<div>12:00:00</div>`;
                 break;
             case 'media':
                 if (c.mediaType === 'video') {
