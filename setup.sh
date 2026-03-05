@@ -15,7 +15,8 @@ apt-get upgrade -y
 
 # 2. Install Web Server, PHP, SQLite, and utilities
 echo "Installing Apache, PHP, SQLite, and utilities..."
-apt-get install -y apache2 php libapache2-mod-php php-sqlite3 sqlite3 unclutter chromium-browser sed xdotool
+# Changed chromium-browser to chromium for newer Debian/Raspberry Pi OS
+apt-get install -y apache2 php libapache2-mod-php php-sqlite3 sqlite3 unclutter chromium sed xdotool
 
 # 3. Configure Apache DocumentRoot and PHP settings
 echo "Configuring Apache..."
@@ -66,8 +67,8 @@ xset -dpms
 # Hide cursor
 unclutter -idle 0.5 -root &
 
-# Start Chromium in kiosk mode
-chromium-browser --noerrdialogs --disable-infobars --kiosk http://localhost/player.php
+# Start Chromium in kiosk mode (Changed chromium-browser to chromium)
+chromium --noerrdialogs --disable-infobars --kiosk http://localhost/player.php
 EOF
 
 chmod +x "$LAUNCHER"
@@ -76,7 +77,7 @@ chown "$USER_SUDO:$USER_SUDO" "$LAUNCHER"
 # Detect display manager / Wayland vs X11
 if [ -n "$WAYLAND_DISPLAY" ] || loginctl show-session $(loginctl | awk '/tty/ {print $1}' | head -n 1) -p Type | grep -q wayland; then
     echo "Wayland detected. Configuring Wayfire..."
-    # Wayfire configuration for Bookworm/Wayland
+    # Wayfire configuration for Bookworm/Wayland/Trixie
     WAYFIRE_CONFIG="/home/$USER_SUDO/.config/wayfire.ini"
     mkdir -p "/home/$USER_SUDO/.config"
 
@@ -112,7 +113,7 @@ else
 @xset s noblank
 @xset -dpms
 @unclutter -idle 0.5 -root
-@chromium-browser --noerrdialogs --disable-infobars --kiosk http://localhost/player.php
+@chromium --noerrdialogs --disable-infobars --kiosk http://localhost/player.php
 EOF
     chown -R "$USER_SUDO:$USER_SUDO" "/home/$USER_SUDO/.config"
 fi
