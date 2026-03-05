@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Clear old widgets
             $db->exec("DELETE FROM widgets");
 
-            $stmt = $db->prepare("INSERT INTO widgets (id, type, left, top, width, height, z_index, config) VALUES (:id, :type, :left, :top, :width, :height, :z_index, :config)");
+            $stmt = $db->prepare("INSERT INTO widgets (id, type, \"left\", top, width, height, z_index, config) VALUES (:id, :type, :left, :top, :width, :height, :z_index, :config)");
 
             foreach ($data['widgets'] as $widget) {
                 // Validate essential fields

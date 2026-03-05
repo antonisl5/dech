@@ -7,7 +7,7 @@ try {
     $db = get_db_connection();
 
     // Get widgets
-    $stmt = $db->query("SELECT id, type, left, top, width, height, z_index, config FROM widgets");
+    $stmt = $db->query("SELECT id, type, \"left\", top, width, height, z_index, config FROM widgets");
     $widgets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($widgets as &$w) {

@@ -37,10 +37,11 @@ function init_db() {
     $db->exec("DROP TABLE IF EXISTS widgets");
 
     // Create widgets table (Updated schema)
+    // Note: Wrapping "left" in quotes because it is a reserved SQL keyword
     $db->exec("CREATE TABLE IF NOT EXISTS widgets (
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
-        left REAL NOT NULL,
+        \"left\" REAL NOT NULL,
         top REAL NOT NULL,
         width REAL NOT NULL,
         height REAL NOT NULL,

@@ -7,13 +7,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function initSSE() {
         const source = new EventSource('api/sse.php');
 
-        source.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            if (data.type === 'update') {
-                console.log("SSE Update triggered. Fetching layout...");
-                fetchLayout();
-            }
-        };
+        // Listen for the specific named event from the server
+        source.addEventListener('layout_update', function(event) {
+            console.log("SSE Update triggered. Fetching layout...");
+            fetchLayout();
+        });
 
         source.onerror = function(error) {
             console.error("SSE Connection Error. Reconnecting...", error);
@@ -214,37 +212,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 let html = '';
                 printers.forEach(p => {
                     const prog = p.percent || 0;
-                    const name = printerNames[p.id] || \`Printer \${p.id}\`;
+                    const name = printerNames[p.id] || `Printer ${p.id}`;
                     const statusColor = p.status === 'RUNNING' ? '#00ff00' : (p.status === 'ERROR' ? '#ff0000' : '#cccccc');
 
                     if (config.displayMode === 'percent') {
                         // Minimalist mode
-                        html += \`
+                        html += `
                             <div style="margin-bottom: 5px; text-align: center;">
-                                <div style="font-size: 8cqi; font-weight: bold; color: \${statusColor};">\${prog}%</div>
-                                <div style="font-size: 3cqi; color: #888;">\${name}</div>
+                                <div style="font-size: 8cqi; font-weight: bold; color: ${statusColor};">${prog}%</div>
+                                <div style="font-size: 3cqi; color: #888;">${name}</div>
                             </div>
-                        \`;
+                        `;
                     } else {
                         // Full mode
-                        html += \`
+                        html += `
                             <div style="width: 100%; margin-bottom: 15px;">
-                                <div class="bambu-title" style="color: \${statusColor};">\${name} - \${p.status}</div>
+                                <div class="bambu-title" style="color: ${statusColor};">${name} - ${p.status}</div>
                                 <div class="bambu-progress-bar">
-                                    <div class="bambu-progress-fill" style="width: \${prog}%; background: \${statusColor};"></div>
+                                    <div class="bambu-progress-fill" style="width: ${prog}%; background: ${statusColor};"></div>
                                 </div>
                                 <div class="bambu-details">
-                                    <span>\${prog}%</span>
-                                    <span>\${p.minutes || 0}m left</span>
+                                    <span>${prog}%</span>
+                                    <span>${p.minutes || 0}m left</span>
                                 </div>
                             </div>
-                        \`;
+                        `;
                     }
                 });
 
                 // Allow scrolling if multiple printers exceed container height
                 el.style.overflowY = 'auto';
-                el.innerHTML = \`<div style="width:100%; padding: 10px; box-sizing: border-box;">\${html}</div>\`;
+                el.innerHTML = `<div style="width:100%; padding: 10px; box-sizing: border-box;">${html}</div>`;
             })
             .catch(err => {
                 console.error("Error fetching Bambu status:", err);
