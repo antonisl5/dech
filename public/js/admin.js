@@ -117,8 +117,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 config.text = 'Double click to edit text';
                 break;
             case 'bambu':
-                config.printerId = 'all'; // or specific ID
-                config.displayMode = 'full'; // 'full' or 'percent'
+                config.printerId = '0'; // Default to first specific printer (P2S)
+                config.displayMode = 'text_bar'; // 'text_only' or 'text_bar'
+                config.barThickness = '10'; // pixels
                 config.bgColor = 'rgba(0,0,0,0.8)';
                 break;
         }
@@ -209,11 +210,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 content.innerHTML = `<div style="text-align:center;">${c.text}</div>`;
                 break;
             case 'bambu':
-                content.innerHTML = `
-                    <div class="bambu-title">3D Printer</div>
-                    <div class="bambu-progress-bar"><div class="bambu-progress-fill" style="width: 50%;"></div></div>
-                    <div class="bambu-details">50% | 2h 30m</div>
-                `;
+                const pNames = { '0': 'P2S', '1': 'A1', '2': 'P1S' };
+                const pName = pNames[c.printerId] || 'P2S';
+                let bHtml = `<div style="color: #00ff00; font-weight: bold; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${pName}: 50% | 12 min</div>`;
+
+                if (c.displayMode === 'text_bar') {
+                    bHtml += `
+                    <div style="width: 100%; height: ${c.barThickness}px; background: #444; border-radius: 5px; margin-top: 5px; overflow: hidden;">
+                        <div style="width: 50%; height: 100%; background: #00ff00;"></div>
+                    </div>`;
+                }
+
+                content.innerHTML = `<div style="width: 100%; padding: 10px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; align-items: center;">${bHtml}</div>`;
                 break;
         }
     }
@@ -409,21 +417,24 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (data.type === 'bambu') {
             fieldsHtml += `
                <div class="form-group">
-                   <label>Printer (or 'all')</label>
+                   <label>Specific Printer</label>
                    <select id="cfg-printerId" class="form-control">
-                       <option value="all" ${c.printerId==='all'?'selected':''}>All Printers</option>
-                       <option value="0" ${c.printerId==='0'?'selected':''}>P2S (ID: 0)</option>
-                       <option value="1" ${c.printerId==='1'?'selected':''}>A1 (ID: 1)</option>
-                       <option value="2" ${c.printerId==='2'?'selected':''}>P1S (ID: 2)</option>
+                       <option value="0" ${c.printerId==='0'?'selected':''}>P2S</option>
+                       <option value="1" ${c.printerId==='1'?'selected':''}>A1</option>
+                       <option value="2" ${c.printerId==='2'?'selected':''}>P1S</option>
                    </select>
                </div>
                <div class="form-group">
                     <label>Display Mode</label>
                     <select id="cfg-displayMode" class="form-control">
-                        <option value="full" ${c.displayMode==='full'?'selected':''}>Full (Bar + Text)</option>
-                        <option value="percent" ${c.displayMode==='percent'?'selected':''}>Percent Only</option>
+                        <option value="text_only" ${c.displayMode==='text_only'?'selected':''}>Text Only</option>
+                        <option value="text_bar" ${c.displayMode==='text_bar'?'selected':''}>Text + Progress Bar</option>
                     </select>
                 </div>
+                <div class="form-group">
+                   <label>Progress Bar Thickness (px)</label>
+                   <input type="number" id="cfg-barThickness" class="form-control" value="${c.barThickness || '10'}" min="1" max="100">
+               </div>
            `;
         }
 

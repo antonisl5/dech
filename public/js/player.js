@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('http://localhost:5000/status')
             .then(res => res.json())
             .then(data => {
-                let printers = data; // Data is a direct array now: [{"id": 0, "percent": 0, "minutes": 0, "status": "OFF"}, ...]
+                let printers = data; // Data is a direct array: [{"id": 0, "percent": 0, "minutes": 0, "status": "OFF"}, ...]
 
                 // Map IDs to Names
                 const printerNames = {
@@ -223,51 +223,53 @@ document.addEventListener('DOMContentLoaded', () => {
                     2: "P1S"
                 };
 
-                // Filter if a specific ID is selected
-                if (config.printerId && config.printerId !== 'all') {
-                    const targetId = parseInt(config.printerId);
-                    printers = printers.filter(p => p.id === targetId);
-                }
+                // Determine which single printer we are looking for
+                const targetId = parseInt(config.printerId || '0');
+                const printer = printers.find(p => p.id === targetId);
 
-                if (!printers || printers.length === 0) {
-                    el.innerHTML = '<div style="color:red; font-size:4cqi;">No printers found</div>';
+                if (!printer) {
+                    el.innerHTML = '<div style="color:red; font-size:4cqi;">Printer not found</div>';
                     return;
                 }
 
-                let html = '';
-                printers.forEach(p => {
-                    const prog = p.percent || 0;
-                    const name = printerNames[p.id] || `Printer ${p.id}`;
-                    const statusColor = p.status === 'RUNNING' ? '#00ff00' : (p.status === 'ERROR' ? '#ff0000' : '#cccccc');
+                const prog = printer.percent || 0;
+                const name = printerNames[printer.id] || `Printer ${printer.id}`;
+                // Apply color coding logic
+                let statusColor = '#cccccc'; // Default Gray
+                if (printer.status === 'RUNNING' || printer.status === 'PRINTING') {
+                    statusColor = '#00ff00'; // Green
+                } else if (printer.status === 'ERROR' || printer.status === 'FAILED') {
+                    statusColor = '#ff0000'; // Red
+                } else if (printer.status === 'FINISH' || printer.status === 'DONE') {
+                    statusColor = '#00aaff'; // Blue
+                }
 
-                    if (config.displayMode === 'percent') {
-                        // Minimalist mode
-                        html += `
-                            <div style="margin-bottom: 5px; text-align: center;">
-                                <div style="font-size: 8cqi; font-weight: bold; color: ${statusColor};">${prog}%</div>
-                                <div style="font-size: 3cqi; color: #888;">${name}</div>
-                            </div>
-                        `;
-                    } else {
-                        // Full mode
-                        html += `
-                            <div style="width: 100%; margin-bottom: 15px;">
-                                <div class="bambu-title" style="color: ${statusColor};">${name} - ${p.status}</div>
-                                <div class="bambu-progress-bar">
-                                    <div class="bambu-progress-fill" style="width: ${prog}%; background: ${statusColor};"></div>
-                                </div>
-                                <div class="bambu-details">
-                                    <span>${prog}%</span>
-                                    <span>${p.minutes || 0}m left</span>
-                                </div>
-                            </div>
-                        `;
-                    }
-                });
+                // Exactly one line of text: [Printer Name]: [Percentage]% | [Minutes] min
+                const textLine = `${name}: ${prog}% | ${printer.minutes || 0} min`;
 
-                // Allow scrolling if multiple printers exceed container height
-                el.style.overflowY = 'auto';
-                el.innerHTML = `<div style="width:100%; padding: 10px; box-sizing: border-box;">${html}</div>`;
+                // Base text HTML ensuring it scales and forces single line
+                let html = `
+                    <div style="color: ${statusColor}; font-weight: bold; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        ${textLine}
+                    </div>
+                `;
+
+                // Optionally add the progress bar underneath
+                if (config.displayMode === 'text_bar') {
+                    const thickness = parseInt(config.barThickness || '10');
+                    html += `
+                        <div style="width: 100%; height: ${thickness}px; background: #444; border-radius: 5px; margin-top: 5px; overflow: hidden;">
+                            <div style="width: ${prog}%; height: 100%; background: ${statusColor}; transition: width 0.5s ease;"></div>
+                        </div>
+                    `;
+                }
+
+                // Wrap in flex container to center vertically/horizontally
+                el.innerHTML = `
+                    <div style="width: 100%; padding: 10px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                        ${html}
+                    </div>
+                `;
             })
             .catch(err => {
                 console.error("Error fetching Bambu status:", err);
