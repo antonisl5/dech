@@ -165,8 +165,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const now = new Date().getTime();
         const diff = target - now;
 
+        const format = config.displayFormat || 'full';
+
         if (diff <= 0) {
-            el.innerHTML = `<div>${config.eventName}<br>00:00:00</div>`;
+            let zeroStr = '00:00:00';
+            if (format === 'days_only') zeroStr = '0 Days';
+            else if (format === 'days_hours') zeroStr = '0d 00h';
+            else if (format === 'hours_minutes') zeroStr = '00:00';
+            else if (format === 'minutes_seconds') zeroStr = '00:00';
+            else zeroStr = '0d 00:00:00';
+
+            el.innerHTML = `<div>${config.eventName}<br>${zeroStr}</div>`;
             return;
         }
 
@@ -175,15 +184,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
         const s = Math.floor((diff % (1000 * 60)) / 1000);
 
-        let timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        if (d > 0) {
-            timeStr = `${d}d ` + timeStr;
+        // Calculate total variations for partial displays
+        const totalHours = Math.floor(diff / (1000 * 60 * 60));
+        const totalMinutes = Math.floor(diff / (1000 * 60));
+
+        let timeStr = '';
+
+        if (format === 'days_only') {
+            timeStr = `${d} Days`;
+        } else if (format === 'days_hours') {
+            timeStr = `${d}d ${h.toString().padStart(2, '0')}h`;
+        } else if (format === 'hours_minutes') {
+            timeStr = `${totalHours.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        } else if (format === 'minutes_seconds') {
+            timeStr = `${totalMinutes.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        } else {
+            // Full format (default)
+            timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            if (d > 0) {
+                timeStr = `${d}d ` + timeStr;
+            }
         }
 
         el.innerHTML = `<div>${config.eventName}<br>${timeStr}</div>`;
     }
 
-    // Bambu Lab 3D Printer Fetching
     function fetchBambuData(el, config) {
         // Fetch from the local Python Flask service
         fetch('http://localhost:5000/status')

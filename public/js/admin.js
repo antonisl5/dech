@@ -104,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'countdown':
                 config.targetDate = new Date().toISOString().split('T')[0] + 'T00:00';
                 config.eventName = 'Event';
+                config.displayFormat = 'full'; // Options: full, days_only, days_hours, hours_minutes, minutes_seconds
                 break;
             case 'youtube':
                 config.youtubeUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
@@ -189,7 +190,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 content.innerHTML = `<div class="ticker-text" style="color:${c.textColor}">${c.text}</div>`;
                 break;
             case 'countdown':
-                content.innerHTML = `<div>${c.eventName}<br>00:00:00</div>`;
+                let placeholderText = '00:00:00';
+                if (c.displayFormat === 'days_only') placeholderText = '0 Days';
+                else if (c.displayFormat === 'days_hours') placeholderText = '0d 00h';
+                else if (c.displayFormat === 'hours_minutes') placeholderText = '00:00';
+                else if (c.displayFormat === 'minutes_seconds') placeholderText = '00:00';
+                else placeholderText = '0d 00:00:00';
+                content.innerHTML = `<div>${c.eventName}<br>${placeholderText}</div>`;
                 break;
             case 'youtube':
                 content.innerHTML = `<div style="background:red;color:white;padding:10px;text-align:center;">YouTube Video<br><small>${c.youtubeUrl}</small></div>`;
@@ -365,6 +372,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="form-group">
                     <label>Target Date & Time</label>
                     <input type="datetime-local" id="cfg-targetDate" class="form-control" value="${c.targetDate || ''}">
+                </div>
+                <div class="form-group">
+                    <label>Display Format</label>
+                    <select id="cfg-displayFormat" class="form-control">
+                        <option value="full" ${c.displayFormat==='full'?'selected':''}>Full (Days, Hours, Min, Sec)</option>
+                        <option value="days_only" ${c.displayFormat==='days_only'?'selected':''}>Days Only</option>
+                        <option value="days_hours" ${c.displayFormat==='days_hours'?'selected':''}>Days & Hours</option>
+                        <option value="hours_minutes" ${c.displayFormat==='hours_minutes'?'selected':''}>Hours & Minutes</option>
+                        <option value="minutes_seconds" ${c.displayFormat==='minutes_seconds'?'selected':''}>Minutes & Seconds</option>
+                    </select>
                 </div>
             `;
         } else if (data.type === 'youtube') {
