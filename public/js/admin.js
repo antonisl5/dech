@@ -2,6 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvasContainer = document.getElementById('canvas-container');
     const saveLayoutBtn = document.getElementById('save-layout-btn');
     const globalBgColorInput = document.getElementById('global-bg-color');
+    const globalWhStartInput = document.getElementById('global-wh-start');
+    const globalWhEndInput = document.getElementById('global-wh-end');
     const widgetList = document.getElementById('widget-list');
 
     // Modals & Forms
@@ -30,6 +32,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     globalBgColorInput.value = data.global_background_color;
                     canvasContainer.style.backgroundColor = data.global_background_color;
                 }
+                if (data.working_hours_start) globalWhStartInput.value = data.working_hours_start;
+                if (data.working_hours_end) globalWhEndInput.value = data.working_hours_end;
+
                 data.widgets.forEach(w => {
                     createWidgetElement(w);
                 });
@@ -90,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         switch (type) {
             case 'clock':
-                config.timezone = 'UTC';
+                config.timezone = 'Europe/Athens';
                 config.format = '24h';
                 break;
             case 'media':
@@ -104,22 +109,23 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'countdown':
                 config.targetDate = new Date().toISOString().split('T')[0] + 'T00:00';
                 config.eventName = 'Event';
-                config.displayFormat = 'full'; // Options: full, days_only, days_hours, hours_minutes, minutes_seconds
+                config.displayFormat = 'full';
                 break;
             case 'youtube':
                 config.youtubeUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
                 break;
             case 'shape':
                 config.bgColor = '#007bff';
-                config.borderRadius = '0'; // 0 for square, 50 for circle
+                config.shapeType = 'rectangle'; // rectangle, oval, triangle
+                config.borderRadius = '0'; // Custom border radius option
                 break;
             case 'freetext':
                 config.text = 'Double click to edit text';
                 break;
             case 'bambu':
-                config.printerId = '0'; // Default to first specific printer (P2S)
-                config.displayMode = 'text_bar'; // 'text_only' or 'text_bar'
-                config.barThickness = '10'; // pixels
+                config.printerId = '0';
+                config.displayMode = 'text_bar';
+                config.barThickness = '10';
                 config.bgColor = 'rgba(0,0,0,0.8)';
                 break;
         }
@@ -173,10 +179,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Reset specific styles
         el.style.borderRadius = '0';
+        el.style.clipPath = 'none';
 
         switch (data.type) {
             case 'clock':
-                content.innerHTML = `<div>12:00:00</div>`;
+                content.innerHTML = `<div>12:00:00<br><small style="font-size:0.5em;">${c.timezone || 'UTC'}</small></div>`;
                 break;
             case 'media':
                 if (c.mediaType === 'video') {
@@ -203,7 +210,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 content.innerHTML = `<div style="background:red;color:white;padding:10px;text-align:center;">YouTube Video<br><small>${c.youtubeUrl}</small></div>`;
                 break;
             case 'shape':
-                if (c.borderRadius) el.style.borderRadius = c.borderRadius + '%';
+                if (c.shapeType === 'triangle') {
+                    el.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                } else if (c.shapeType === 'oval') {
+                    el.style.borderRadius = '50%'; // Base for oval, will be overridden if user set custom radius
+                }
+                // Always apply the user's custom border-radius slider if they tweaked it
+                if (c.borderRadius) {
+                    el.style.borderRadius = c.borderRadius + '%';
+                }
                 content.innerHTML = '';
                 break;
             case 'freetext':
@@ -344,10 +359,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Specific Fields
         if (data.type === 'clock') {
+            const timezones = [
+                'UTC', 'Europe/Athens', 'Europe/London', 'Europe/Berlin',
+                'America/New_York', 'America/Chicago', 'America/Los_Angeles',
+                'Asia/Tokyo', 'Asia/Dubai', 'Asia/Singapore',
+                'Australia/Sydney', 'Pacific/Auckland'
+            ];
+
+            let tzOptions = '';
+            timezones.forEach(tz => {
+                const selected = (c.timezone === tz) ? 'selected' : '';
+                tzOptions += `<option value="${tz}" ${selected}>${tz}</option>`;
+            });
+
             fieldsHtml += `
                 <div class="form-group">
                     <label>Timezone</label>
-                    <input type="text" id="cfg-timezone" class="form-control" value="${c.timezone || 'UTC'}">
+                    <select id="cfg-timezone" class="form-control">
+                        ${tzOptions}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Format</label>
+                    <select id="cfg-format" class="form-control">
+                        <option value="24h" ${c.format==='24h'?'selected':''}>24 Hour</option>
+                        <option value="12h" ${c.format==='12h'?'selected':''}>12 Hour (AM/PM)</option>
+                    </select>
                 </div>
             `;
         } else if (data.type === 'media') {
@@ -402,9 +439,17 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (data.type === 'shape') {
             fieldsHtml += `
                <div class="form-group">
-                   <label>Border Radius (%)</label>
+                    <label>Shape Type</label>
+                    <select id="cfg-shapeType" class="form-control">
+                        <option value="rectangle" ${c.shapeType==='rectangle'?'selected':''}>Rectangle / Square</option>
+                        <option value="oval" ${c.shapeType==='oval'?'selected':''}>Oval / Circle</option>
+                        <option value="triangle" ${c.shapeType==='triangle'?'selected':''}>Triangle</option>
+                    </select>
+               </div>
+               <div class="form-group">
+                   <label>Border Radius (%) - Applies to all</label>
                    <input type="number" id="cfg-borderRadius" class="form-control" value="${c.borderRadius || '0'}" max="50">
-                   <small style="color:#aaa;">0 = Square, 50 = Circle</small>
+                   <small style="color:#aaa;">0 = Sharp, 50 = Full Round. Custom styling overlays.</small>
                </div>
            `;
         } else if (data.type === 'freetext') {
@@ -489,6 +534,8 @@ document.addEventListener('DOMContentLoaded', () => {
     saveLayoutBtn.addEventListener('click', () => {
         const layoutData = {
             global_background_color: globalBgColorInput.value,
+            working_hours_start: globalWhStartInput.value,
+            working_hours_end: globalWhEndInput.value,
             widgets: Object.values(widgets)
         };
 

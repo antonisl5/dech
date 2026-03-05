@@ -22,6 +22,9 @@ function init_db() {
 
     // Insert default global background color
     $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('global_background_color', '#000000')");
+    // Insert default working hours (blank means always on)
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('working_hours_start', '')");
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('working_hours_end', '')");
 
     // Create media table
     $db->exec("CREATE TABLE IF NOT EXISTS media (

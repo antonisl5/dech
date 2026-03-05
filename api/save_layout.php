@@ -41,10 +41,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Save global background color if provided
+            // Save global background color
             if (isset($data['global_background_color'])) {
                 $bgStmt = $db->prepare("INSERT INTO settings (key, value) VALUES ('global_background_color', :val) ON CONFLICT(key) DO UPDATE SET value = :val");
                 $bgStmt->execute([':val' => $data['global_background_color']]);
+            }
+
+            // Save Working Hours
+            if (isset($data['working_hours_start'])) {
+                $whStartStmt = $db->prepare("INSERT INTO settings (key, value) VALUES ('working_hours_start', :val) ON CONFLICT(key) DO UPDATE SET value = :val");
+                $whStartStmt->execute([':val' => $data['working_hours_start']]);
+            }
+
+            if (isset($data['working_hours_end'])) {
+                $whEndStmt = $db->prepare("INSERT INTO settings (key, value) VALUES ('working_hours_end', :val) ON CONFLICT(key) DO UPDATE SET value = :val");
+                $whEndStmt->execute([':val' => $data['working_hours_end']]);
             }
 
             // Update a timestamp in settings to trigger SSE

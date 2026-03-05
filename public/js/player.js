@@ -1,8 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
     const playerContainer = document.getElementById('player-container');
-    let widgets = {};
+    const sleepOverlay = document.getElementById('sleep-overlay');
+
+    let currentLayoutData = null;
     let activeIntervals = {};
     let activeTimeouts = {};
+    let mainLoopInterval = null;
+    let isSleeping = false;
 
     function initSSE() {
         const source = new EventSource('api/sse.php');
@@ -25,7 +29,9 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    renderLayout(data);
+                    currentLayoutData = data;
+                    // Pass true to force a render since layout just updated via SSE
+                    checkWorkingHoursAndRender(true);
                 }
             })
             .catch(err => console.error("Error fetching layout:", err));
@@ -55,7 +61,49 @@ document.addEventListener('DOMContentLoaded', () => {
         playerContainer.style.top = (h - cHeight) / 2 + 'px';
     }
 
+    function checkWorkingHoursAndRender(forceRender = false) {
+        if (!currentLayoutData) return;
+
+        const whStart = currentLayoutData.working_hours_start;
+        const whEnd = currentLayoutData.working_hours_end;
+
+        let shouldSleep = false;
+
+        if (whStart && whEnd) {
+            const now = new Date();
+            const currentHours = now.getHours();
+            const currentMinutes = now.getMinutes();
+            const currentTimeStr = `${currentHours.toString().padStart(2, '0')}:${currentMinutes.toString().padStart(2, '0')}`;
+
+            if (whStart <= whEnd) {
+                // e.g., 08:00 to 22:00
+                shouldSleep = currentTimeStr < whStart || currentTimeStr >= whEnd;
+            } else {
+                // e.g., 22:00 to 08:00 (crosses midnight)
+                shouldSleep = currentTimeStr >= whEnd && currentTimeStr < whStart;
+            }
+        }
+
+        if (shouldSleep) {
+            if (!isSleeping) {
+                console.log("Entering sleep mode. Pausing all widgets.");
+                isSleeping = true;
+                sleepOverlay.style.display = 'block';
+                clearAllIntervals(); // Pause network and CPU heavy tasks
+            }
+        } else {
+            if (isSleeping || playerContainer.innerHTML === '' || forceRender) {
+                console.log("Waking up or forced render.");
+                isSleeping = false;
+                sleepOverlay.style.display = 'none';
+                renderLayout(currentLayoutData);
+            }
+        }
+    }
+
     function renderLayout(data) {
+        if (isSleeping) return; // Don't render if we should be sleeping
+
         // Apply Global Background
         if (data.global_background_color) {
             playerContainer.style.backgroundColor = data.global_background_color;
@@ -126,7 +174,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 break;
             case 'shape':
-                if (c.borderRadius) container.parentElement.style.borderRadius = c.borderRadius + '%';
+                if (c.shapeType === 'triangle') {
+                    container.parentElement.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+                } else if (c.shapeType === 'oval') {
+                    container.parentElement.style.borderRadius = '50%'; // Base default for oval
+                }
+                // Always apply the custom border radius if the user has defined it
+                if (c.borderRadius) {
+                    container.parentElement.style.borderRadius = c.borderRadius + '%';
+                }
                 break;
             case 'freetext':
                 container.classList.add('freetext-content');
@@ -147,17 +203,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateClock(el, config) {
         const now = new Date();
-        const opts = { timeZone: config.timezone || 'UTC' };
-        if (config.format === '12h') {
-            opts.hour12 = true;
-        } else {
-            opts.hour12 = false;
-        }
-        opts.hour = '2-digit';
-        opts.minute = '2-digit';
-        opts.second = '2-digit';
+        const opts = {
+            timeZone: config.timezone || 'Europe/Athens',
+            hour12: config.format === '12h',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        };
 
-        el.innerHTML = new Intl.DateTimeFormat('en-US', opts).format(now);
+        try {
+            el.innerHTML = new Intl.DateTimeFormat('en-US', opts).format(now);
+        } catch (e) {
+            // Fallback if timezone is invalid
+            el.innerHTML = new Intl.DateTimeFormat('en-US', {hour: '2-digit', minute:'2-digit', second:'2-digit'}).format(now);
+        }
     }
 
     function updateCountdown(el, config) {
@@ -214,7 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('http://localhost:5000/status')
             .then(res => res.json())
             .then(data => {
-                let printers = data; // Data is a direct array: [{"id": 0, "percent": 0, "minutes": 0, "status": "OFF"}, ...]
+                let printers = data;
 
                 // Map IDs to Names
                 const printerNames = {
@@ -287,6 +346,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial load and scaling
     scaleCanvas();
     window.addEventListener('resize', scaleCanvas);
+
+    // Start main checking loop for working hours (runs every 60 seconds)
+    mainLoopInterval = setInterval(checkWorkingHoursAndRender, 60000);
 
     fetchLayout();
     initSSE();

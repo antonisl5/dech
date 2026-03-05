@@ -30,6 +30,15 @@ require_login();
                         <label for="global-bg-color">Global Background Color</label>
                         <input type="color" id="global-bg-color" class="form-control" value="#000000">
                     </div>
+                    <div class="form-group">
+                        <label for="global-wh-start">Working Hours Start (e.g. 08:00)</label>
+                        <input type="time" id="global-wh-start" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="global-wh-end">Working Hours End (e.g. 22:00)</label>
+                        <input type="time" id="global-wh-end" class="form-control">
+                        <small style="color:#aaa;">Leave blank for always on.</small>
+                    </div>
                 </div>
 
                 <h3>Available Widgets</h3>

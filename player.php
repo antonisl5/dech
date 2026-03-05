@@ -12,6 +12,9 @@
         <!-- Widgets loaded via SSE and JSON -->
     </div>
 
+    <!-- Black overlay for non-working hours to save screen/CPU -->
+    <div id="sleep-overlay"></div>
+
     <!-- Container Queries for fluid responsive text size inside widgets -->
     <style>
         .grid-container {
@@ -37,6 +40,15 @@
             align-items: center;
             justify-content: center;
             font-size: 10cqi; /* 10% of container width as default */
+        }
+
+        #sleep-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background-color: #000;
+            z-index: 9999;
+            display: none; /* Hidden by default */
         }
     </style>
 
