@@ -1,9 +1,26 @@
-body {
+/* --- Global Body Resets --- */
+html, body {
     font-family: sans-serif;
     margin: 0;
     padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden; /* CRITICAL: Prevent entire page scrolling and black space at bottom */
     background-color: #1a1a1a;
     color: #eee;
+    box-sizing: border-box;
+}
+
+*, *:before, *:after {
+    box-sizing: inherit;
+}
+
+/* --- Layout Structure --- */
+.page-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
 }
 
 .header {
@@ -13,6 +30,8 @@ body {
     justify-content: space-between;
     align-items: center;
     border-bottom: 2px solid #007bff;
+    height: 65px; /* Fixed height for flex calc */
+    flex-shrink: 0;
 }
 
 .header h1 {
@@ -22,17 +41,21 @@ body {
 
 .admin-layout {
     display: flex;
-    height: calc(100vh - 65px);
+    flex: 1;
+    overflow: hidden; /* Contains the sidebar and main content */
 }
 
+/* --- Sidebar --- */
 .sidebar {
-    width: 300px;
+    width: 320px;
+    min-width: 320px;
     background-color: #222;
     padding: 20px;
-    overflow-y: auto;
+    overflow-y: auto; /* Allow scrolling ONLY inside the sidebar */
     border-right: 1px solid #444;
 }
 
+/* --- Main Canvas Area --- */
 .main-content {
     flex-grow: 1;
     padding: 20px;
@@ -40,18 +63,99 @@ body {
     justify-content: center;
     align-items: center;
     background-color: #111;
+    overflow: hidden;
 }
 
-/* Enforce 16:9 Aspect Ratio */
+/* Strict 16:9 Aspect Ratio Container Wrapper */
 .aspect-ratio-wrapper {
     position: relative;
+    /* Determine size based on viewport to maintain 16:9 and fit on screen */
     width: 100%;
-    max-width: 1600px; /* Limit max size on huge screens */
+    /* max-height depends on available height (100vh - 65px header - 40px padding = ~calc(100vh - 105px)) */
+    max-height: calc(100vh - 105px);
+    /* Force the width to follow the 16:9 ratio of the max-height */
     aspect-ratio: 16 / 9;
+    max-width: calc((100vh - 105px) * 16 / 9);
+
     background-color: #000;
     box-shadow: 0 0 20px rgba(0,0,0,0.8);
     border: 1px solid #333;
+    /* CRITICAL: Keep absolutely positioned elements inside */
     overflow: hidden;
+}
+
+/* The actual interactive canvas */
+.grid-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background-color: #000; /* Fallback, overridden by JS global setting */
+    overflow: hidden;
+    /* Container queries for responsive scaling inside canvas */
+    container-type: size;
+    container-name: canvas;
+}
+
+/* --- Widgets inside the Canvas --- */
+.widget-item {
+    position: absolute;
+    box-sizing: border-box;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px dashed #666;
+    touch-action: none; /* Required for interact.js */
+    user-select: none;
+    overflow: hidden;
+    cursor: grab;
+    /* Container queries for fluid content */
+    container-type: size;
+}
+
+.widget-item:active {
+    cursor: grabbing;
+}
+
+.widget-item.is-selected {
+    border: 2px solid #007bff;
+    background-color: rgba(0, 123, 255, 0.2);
+}
+
+.resize-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: #007bff;
+    bottom: -5px;
+    right: -5px;
+    cursor: se-resize;
+    border-radius: 50%;
+}
+
+/* Prevent contents from capturing drag events */
+.widget-item .content {
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Fluid Text Size using Container Queries */
+.widget-item .content.freetext-content {
+    font-size: 10cqi; /* Default size */
+    word-wrap: break-word;
+    text-align: center;
+    padding: 5px;
+    box-sizing: border-box;
+}
+
+/* --- Sidebar Components --- */
+.global-settings {
+    margin-bottom: 20px;
+    padding: 10px;
+    background: #2a2a2a;
+    border-radius: 4px;
 }
 
 .new-widget {
@@ -93,50 +197,30 @@ body {
 .btn-danger { background-color: #dc3545; }
 .btn-danger:hover { background-color: #c82333; }
 
-/* Widget item inside canvas */
-.widget-item {
+/* Action bar for widgets on hover/select */
+.widget-actions {
     position: absolute;
-    background-color: rgba(255, 255, 255, 0.1);
-    border: 1px dashed #666;
-    touch-action: none;
-    user-select: none;
-    overflow: hidden;
-    cursor: grab;
+    top: 5px;
+    right: 5px;
+    display: none;
+    z-index: 100;
 }
 
-.widget-item:active {
-    cursor: grabbing;
+.widget-item.is-selected .widget-actions {
+    display: block;
 }
 
-.widget-item.is-selected {
-    border: 2px solid #007bff;
-    background-color: rgba(0, 123, 255, 0.2);
-}
-
-.widget-item .content {
-    pointer-events: none;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-
-/* Fluid Text Size using Container Queries */
-.widget-item {
-    container-type: size;
-}
-
-.widget-item .content.freetext-content {
-    font-size: 10cqi; /* Default size */
-    word-wrap: break-word;
-    text-align: center;
+.widget-actions button {
+    background: #007bff;
+    border: none;
+    color: white;
     padding: 5px;
-    box-sizing: border-box;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
 }
 
-/* Modals */
+/* --- Modals --- */
 .modal {
     display: none;
     position: fixed;
@@ -151,11 +235,13 @@ body {
 
 .modal-content {
     background-color: #222;
-    margin: 10% auto;
+    margin: 5% auto;
     padding: 30px;
     border: 1px solid #444;
     border-radius: 8px;
     width: 400px;
+    max-height: 80vh;
+    overflow-y: auto;
     color: #eee;
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
 }
@@ -226,27 +312,4 @@ body {
     text-overflow: ellipsis;
     margin-top: 5px;
     color: #aaa;
-}
-
-/* Action bar for widgets on hover/select */
-.widget-actions {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    display: none;
-    z-index: 100;
-}
-
-.widget-item.is-selected .widget-actions {
-    display: block;
-}
-
-.widget-actions button {
-    background: #007bff;
-    border: none;
-    color: white;
-    padding: 5px;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 12px;
 }
