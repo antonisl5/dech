@@ -1,0 +1,98 @@
+/* public/css/player.css */
+
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: #000;
+    color: #fff;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    /* Ensure no text selection, no user interference */
+    user-select: none;
+    cursor: none; /* Hide cursor by default on player screen */
+}
+
+.grid-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    /* Maintain 16:9 ratio generally, but fill screen */
+}
+
+.grid-stack {
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+}
+
+/* GridStack item wrapper in player mode */
+.grid-stack-item-content {
+    background-color: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+/* Widget Content Containers */
+.widget-body {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    overflow: hidden;
+}
+
+/* Specific Widget Styles */
+.clock-widget {
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.ticker-widget {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+.ticker-widget marquee {
+    width: 100%;
+    font-size: 2vw;
+}
+
+.media-widget {
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+}
+.media-widget img, .media-widget video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Fill the widget area completely */
+}
+
+.countdown-widget {
+    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+.countdown-widget span {
+    font-size: 1.5vw;
+}
+.countdown-widget .time-left {
+    font-size: 4vw;
+}
