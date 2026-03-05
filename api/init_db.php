@@ -20,6 +20,9 @@ function init_db() {
         value TEXT NOT NULL
     )");
 
+    // Insert default global background color
+    $db->exec("INSERT OR IGNORE INTO settings (key, value) VALUES ('global_background_color', '#000000')");
+
     // Create media table
     $db->exec("CREATE TABLE IF NOT EXISTS media (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,14 +32,19 @@ function init_db() {
         uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Create widgets table
+    // Since we are changing the schema from x/y/w/h to left/top/width/height/z_index,
+    // we must drop the old table first so the new layout builder can save successfully.
+    $db->exec("DROP TABLE IF EXISTS widgets");
+
+    // Create widgets table (Updated schema)
     $db->exec("CREATE TABLE IF NOT EXISTS widgets (
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
-        x INTEGER NOT NULL,
-        y INTEGER NOT NULL,
-        w INTEGER NOT NULL,
-        h INTEGER NOT NULL,
+        left REAL NOT NULL,
+        top REAL NOT NULL,
+        width REAL NOT NULL,
+        height REAL NOT NULL,
+        z_index INTEGER NOT NULL DEFAULT 1,
         config TEXT,
         last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
     )");

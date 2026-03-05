@@ -1,123 +1,132 @@
 #!/bin/bash
 
-# Ensure the script is run as root
-if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root (e.g., sudo ./setup.sh)"
-  exit 1
-fi
+# Exit on error
+set -e
 
-echo "Starting Digital Signage Installation..."
+echo "=========================================="
+echo " Starting Zero-Knowledge Installation for"
+echo " PHP Digital Signage (Canvas Editor)"
+echo "=========================================="
 
 # 1. Update system
-echo "Updating system..."
-apt-get update -y
-apt-get upgrade -y
+echo "[1/6] Updating system packages..."
+sudo apt-get update -y
+sudo apt-get upgrade -y
 
-# 2. Install Web Server, PHP, SQLite, and utilities
-echo "Installing Apache, PHP, SQLite, and utilities..."
-# Changed chromium-browser to chromium for newer Debian/Raspberry Pi OS
-apt-get install -y apache2 php libapache2-mod-php php-sqlite3 sqlite3 unclutter chromium sed xdotool
+# 2. Install required packages
+echo "[2/6] Installing Apache, PHP, SQLite, Python3, and utilities..."
+# Added python3-flask and python3-flask-cors for the Bambu API microservice
+sudo apt-get install -y apache2 php libapache2-mod-php php-sqlite3 sqlite3 unclutter python3 python3-flask python3-flask-cors
 
-# 3. Configure Apache DocumentRoot and PHP settings
-echo "Configuring Apache..."
-# Increase upload limits in PHP to support 100MB files
-PHP_INI=$(find /etc/php -name "php.ini" | grep apache2 | head -n 1)
-if [ -f "$PHP_INI" ]; then
-    sed -i 's/upload_max_filesize = .*/upload_max_filesize = 100M/' "$PHP_INI"
-    sed -i 's/post_max_size = .*/post_max_size = 100M/' "$PHP_INI"
+# We need the browser to display the signage.
+# On newer Debian (Trixie/Bookworm) it's 'chromium', not 'chromium-browser'
+if apt-cache show chromium-browser > /dev/null 2>&1; then
+    sudo apt-get install -y chromium-browser
+else
+    sudo apt-get install -y chromium
 fi
 
-# Enable Apache modules
-a2enmod rewrite headers
-systemctl restart apache2
+# 3. Configure Apache and PHP
+echo "[3/6] Configuring Apache web server..."
 
-# 4. Copy project files and set permissions
-echo "Copying files to web directory and setting permissions..."
-# Assuming the script is run from the project root
-rsync -av --exclude 'setup.sh' --exclude '.git' ./ /var/www/html/
+# Remove default index.html
+if [ -f /var/www/html/index.html ]; then
+    sudo rm /var/www/html/index.html
+fi
 
-mkdir -p /var/www/html/media
-mkdir -p /var/www/html/db
+# Copy project files to web root
+PROJECT_DIR=$(pwd)
+sudo cp -r $PROJECT_DIR/* /var/www/html/
 
-chown -R www-data:www-data /var/www/html
-chmod -R 775 /var/www/html/media
-chmod -R 775 /var/www/html/db
+# Set up database directory and permissions
+echo "Setting up SQLite database..."
+sudo mkdir -p /var/www/html/db
+sudo mkdir -p /var/www/html/public/uploads
 
-# 5. Initialize the SQLite database
-echo "Initializing database..."
-# Run the init_db.php script from command line to create tables if they don't exist
-php /var/www/html/api/init_db.php
+# Run the PHP initialization script to create tables
+cd /var/www/html
+sudo php api/init_db.php
 
-# 6. Kiosk Mode and Display Settings (Wayland vs X11)
-echo "Configuring Kiosk Mode..."
+# Crucial: Give Apache (www-data) ownership of the web root so it can write to SQLite and uploads
+sudo chown -R www-data:www-data /var/www/html
+sudo chmod -R 775 /var/www/html
 
-# Determine the primary user (usually 'pi' or the one running sudo)
-USER_SUDO=${SUDO_USER:-pi}
+# Enable necessary Apache modules and restart
+sudo a2enmod rewrite
+sudo systemctl restart apache2
 
-# Create a launcher script for Chromium
-LAUNCHER="/home/$USER_SUDO/start_kiosk.sh"
-cat << 'EOF' > "$LAUNCHER"
+# 4. Configure OS to prevent screen sleep/blanking
+echo "[4/6] Configuring display settings to prevent sleep..."
+
+# Determine display server (Wayland vs X11)
+if [ -d "/etc/xdg/wayfire" ] || [ -f "/etc/wayfire/wayfire.ini" ]; then
+    echo "Detected Wayland (Wayfire). Configuring..."
+    mkdir -p ~/.config
+    WAYFIRE_CONFIG=~/.config/wayfire.ini
+    if [ ! -f "$WAYFIRE_CONFIG" ]; then
+        touch "$WAYFIRE_CONFIG"
+    fi
+    # Disable idle/blanking in wayfire
+    if ! grep -q "\[idle\]" "$WAYFIRE_CONFIG"; then
+        echo -e "\n[idle]\ndpms_timeout = -1\n" >> "$WAYFIRE_CONFIG"
+    fi
+else
+    echo "Detected X11. Configuring..."
+    # Disable screen blanking in lightdm if it exists
+    if [ -f /etc/lightdm/lightdm.conf ]; then
+        sudo sed -i 's/^#xserver-command=.*/xserver-command=X -s 0 -dpms/' /etc/lightdm/lightdm.conf
+    fi
+    # Disable screen blanking in X11 user settings
+    mkdir -p ~/.config/lxsession/LXDE-pi
+    LXSESSION_AUTOSTART=~/.config/lxsession/LXDE-pi/autostart
+    if [ ! -f "$LXSESSION_AUTOSTART" ]; then
+        touch "$LXSESSION_AUTOSTART"
+    fi
+    sed -i '/@xscreensaver/d' "$LXSESSION_AUTOSTART"
+    if ! grep -q "@xset s off" "$LXSESSION_AUTOSTART"; then
+        echo "@xset s off" >> "$LXSESSION_AUTOSTART"
+        echo "@xset -dpms" >> "$LXSESSION_AUTOSTART"
+        echo "@xset s noblank" >> "$LXSESSION_AUTOSTART"
+    fi
+fi
+
+# 5. Auto-launch Chromium and Python Microservice on boot
+echo "[5/6] Setting up auto-start services..."
+
+# Create a master startup script
+STARTUP_SCRIPT=~/.signage_start.sh
+cat << 'STARTUP_EOF' > "$STARTUP_SCRIPT"
 #!/bin/bash
 
-# Prevent screen blanking (X11)
-xset s noblank
-xset s off
-xset -dpms
-
 # Hide cursor
-unclutter -idle 0.5 -root &
+unclutter -idle 0.1 -root &
 
-# Start Chromium in kiosk mode (Changed chromium-browser to chromium)
-chromium --noerrdialogs --disable-infobars --kiosk http://localhost/player.php
-EOF
+# Start the Python Bambu API microservice in the background
+# We assume the user's updated python script is in the webroot or home dir.
+cd /var/www/html && python3 bambu_api.py > /dev/null 2>&1 &
 
-chmod +x "$LAUNCHER"
-chown "$USER_SUDO:$USER_SUDO" "$LAUNCHER"
+# Launch Chromium in Kiosk mode
+# Give Apache a few seconds to ensure it's up, then launch
+sleep 5
+chromium --kiosk --noerrdialogs --disable-infobars --start-fullscreen http://localhost/player.php
+STARTUP_EOF
 
-# Detect display manager / Wayland vs X11
-if [ -n "$WAYLAND_DISPLAY" ] || loginctl show-session $(loginctl | awk '/tty/ {print $1}' | head -n 1) -p Type | grep -q wayland; then
-    echo "Wayland detected. Configuring Wayfire..."
-    # Wayfire configuration for Bookworm/Wayland/Trixie
-    WAYFIRE_CONFIG="/home/$USER_SUDO/.config/wayfire.ini"
-    mkdir -p "/home/$USER_SUDO/.config"
+chmod +x "$STARTUP_SCRIPT"
 
-    # Disable screen blanking in wayfire
-    if grep -q "\[idle\]" "$WAYFIRE_CONFIG" 2>/dev/null; then
-        sed -i 's/dpms_timeout = .*/dpms_timeout = -1/' "$WAYFIRE_CONFIG"
-    else
-        echo -e "\n[idle]\ndpms_timeout = -1" >> "$WAYFIRE_CONFIG"
+# Add to wayfire autostart (Wayland)
+if [ -d "/etc/xdg/wayfire" ] || [ -f "/etc/wayfire/wayfire.ini" ]; then
+    if ! grep -q "signage_start" "$WAYFIRE_CONFIG"; then
+        echo -e "\n[autostart]\nsignage = $STARTUP_SCRIPT\n" >> "$WAYFIRE_CONFIG"
     fi
-
-    # Auto-start launcher
-    if grep -q "\[autostart\]" "$WAYFIRE_CONFIG" 2>/dev/null; then
-        # Check if kiosk is already there, if not append it
-        if ! grep -q "kiosk =" "$WAYFIRE_CONFIG"; then
-             echo "kiosk = $LAUNCHER" >> "$WAYFIRE_CONFIG"
-        fi
-    else
-        echo -e "\n[autostart]\nkiosk = $LAUNCHER" >> "$WAYFIRE_CONFIG"
-    fi
-    chown -R "$USER_SUDO:$USER_SUDO" "/home/$USER_SUDO/.config"
-
+# Add to LXDE autostart (X11)
 else
-    echo "X11 detected. Configuring LXDE/Autostart..."
-    # X11 configuration for Bullseye/Buster
-    AUTOSTART_DIR="/home/$USER_SUDO/.config/lxsession/LXDE-pi"
-    mkdir -p "$AUTOSTART_DIR"
-    AUTOSTART_FILE="$AUTOSTART_DIR/autostart"
-
-    cat << EOF > "$AUTOSTART_FILE"
-@lxpanel --profile LXDE-pi
-@pcmanfm --desktop --profile LXDE-pi
-@xset s off
-@xset s noblank
-@xset -dpms
-@unclutter -idle 0.5 -root
-@chromium --noerrdialogs --disable-infobars --kiosk http://localhost/player.php
-EOF
-    chown -R "$USER_SUDO:$USER_SUDO" "/home/$USER_SUDO/.config"
+    if ! grep -q ".signage_start.sh" "$LXSESSION_AUTOSTART"; then
+        echo "@$STARTUP_SCRIPT" >> "$LXSESSION_AUTOSTART"
+    fi
 fi
 
-echo "Installation complete! The Raspberry Pi is now configured."
-echo "Please REBOOT the Raspberry Pi to start the Digital Signage."
-echo "You can access the admin panel at http://<pi-ip-address>/admin.php"
+echo "=========================================="
+echo " Setup Complete! "
+echo " Please reboot the Raspberry Pi to apply display settings and auto-launch the player."
+echo " Admin Panel: http://<raspberry-pi-ip>/admin.php"
+echo "=========================================="

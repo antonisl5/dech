@@ -1,111 +1,153 @@
-/* public/css/player.css */
-
-body, html {
+body {
     margin: 0;
     padding: 0;
-    width: 100vw;
-    height: 100vh;
     background-color: #000;
-    color: #fff;
-    overflow: hidden;
-    font-family: Arial, sans-serif;
-    /* Ensure no text selection, no user interference */
-    user-select: none;
-    cursor: none; /* Hide cursor by default on player screen */
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    color: white;
+    font-family: sans-serif;
+    overflow: hidden; /* Prevent scrollbars */
 }
 
-/*
- * The grid-container must act as a perfect 16:9 box that fits
- * within the screen exactly the same way the admin panel container does.
- * We will calculate its dimensions dynamically via Javascript
- * to ensure letterboxing/pillarboxing keeps the exact aspect ratio.
- */
+/* Dynamic container scaling applied inline by JS to maintain 16:9 ratio */
 .grid-container {
-    background-color: transparent;
-    position: relative;
+    position: absolute;
+    /* top/left/width/height set dynamically by JS to fit screen and keep 16:9 */
+    background-color: #000; /* overridden by global layout setting */
     overflow: hidden;
 }
 
-.grid-stack {
+.widget-item {
+    position: absolute;
+    box-sizing: border-box;
+    /* Inherit exact dimensions mapping from layout JSON */
+    container-type: size;
+}
+
+.content {
     width: 100%;
     height: 100%;
-}
-
-/* GridStack item wrapper in player mode */
-.grid-stack-item-content {
-    background-color: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
     position: relative;
-    padding: 0;
-    margin: 0;
     box-sizing: border-box;
 }
 
-/* Widget Content Containers */
-.widget-body {
+/* Widget Specific Defaults */
+
+.widget-clock {
+    font-weight: bold;
+    /* Fluid size using Container Queries - fallback */
+    font-size: 15cqi;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+}
+
+.widget-media img,
+.widget-media video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.widget-ticker {
+    white-space: nowrap;
+    overflow: hidden;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.5);
+    /* Fluid typography for ticker height */
+    font-size: 50cqh;
+    line-height: 100cqh;
+}
+
+.widget-ticker .ticker-text {
+    display: inline-block;
+    padding-left: 100%;
+    animation: ticker 15s linear infinite;
+}
+
+@keyframes ticker {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+}
+
+.widget-countdown {
+    font-weight: bold;
+    font-size: 12cqi;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Youtube Iframe Wrapper to auto-scale */
+.widget-youtube iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* Basic Shape */
+.widget-shape {
+    width: 100%;
+    height: 100%;
+    /* border-radius manipulated inline via config */
+}
+
+/* Free Text */
+.widget-freetext {
     width: 100%;
     height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
+    word-wrap: break-word;
+    /* font-size inline via cqi */
+}
+
+/* Bambu Lab 3D Printer */
+.widget-bambu {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 8px;
+    font-size: 5cqi;
+}
+
+.bambu-title {
+    font-weight: bold;
+    margin-bottom: 5px;
+    font-size: 6cqi;
+    color: #00ff00;
+}
+
+.bambu-progress-bar {
+    width: 90%;
+    height: 10px;
+    background: #444;
+    border-radius: 5px;
     overflow: hidden;
-    position: relative;
-    box-sizing: border-box;
+    margin-bottom: 5px;
 }
 
-/* Specific Widget Styles */
-.clock-widget {
-    font-weight: bold;
+.bambu-progress-fill {
+    height: 100%;
+    background: #00ff00;
+    width: 0%;
+    transition: width 0.5s ease;
+}
+
+.bambu-details {
     display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-
-.ticker-widget {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    white-space: nowrap;
-}
-.ticker-widget marquee {
-    width: 100%;
-}
-
-.media-widget {
-    width: 100%;
-    height: 100%;
-}
-.media-widget img, .media-widget video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover; /* Fill the widget area completely */
-}
-
-.countdown-widget {
-    font-weight: bold;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-
-.youtube-widget {
-    width: 100%;
-    height: 100%;
-    background-color: #000;
-}
-.youtube-widget iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-    pointer-events: none; /* Prevent user interaction with the video */
+    gap: 15px;
+    font-size: 4cqi;
+    color: #ccc;
 }

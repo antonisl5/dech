@@ -21,23 +21,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Clear old widgets
             $db->exec("DELETE FROM widgets");
 
-            $stmt = $db->prepare("INSERT INTO widgets (id, type, x, y, w, h, config) VALUES (:id, :type, :x, :y, :w, :h, :config)");
+            $stmt = $db->prepare("INSERT INTO widgets (id, type, left, top, width, height, z_index, config) VALUES (:id, :type, :left, :top, :width, :height, :z_index, :config)");
 
             foreach ($data['widgets'] as $widget) {
                 // Validate essential fields
-                if (isset($widget['id'], $widget['type'], $widget['x'], $widget['y'], $widget['w'], $widget['h'])) {
+                if (isset($widget['id'], $widget['type'], $widget['left'], $widget['top'], $widget['width'], $widget['height'], $widget['z_index'])) {
                     $config_json = isset($widget['config']) ? json_encode($widget['config']) : '{}';
 
                     $stmt->execute([
                         ':id' => $widget['id'],
                         ':type' => $widget['type'],
-                        ':x' => intval($widget['x']),
-                        ':y' => intval($widget['y']),
-                        ':w' => intval($widget['w']),
-                        ':h' => intval($widget['h']),
+                        ':left' => floatval($widget['left']),
+                        ':top' => floatval($widget['top']),
+                        ':width' => floatval($widget['width']),
+                        ':height' => floatval($widget['height']),
+                        ':z_index' => intval($widget['z_index']),
                         ':config' => $config_json
                     ]);
                 }
+            }
+
+            // Save global background color if provided
+            if (isset($data['global_background_color'])) {
+                $bgStmt = $db->prepare("INSERT INTO settings (key, value) VALUES ('global_background_color', :val) ON CONFLICT(key) DO UPDATE SET value = :val");
+                $bgStmt->execute([':val' => $data['global_background_color']]);
             }
 
             // Update a timestamp in settings to trigger SSE
@@ -49,8 +56,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $response['success'] = true;
             $response['message'] = 'Layout saved successfully.';
 
-            // To notify SSE connection, we write to a simple file acting as a semaphore for immediate response without DB polling overhead if desired,
-            // or we just rely on the database timestamp. Using a semaphore file is often faster for SSE in PHP.
             file_put_contents(__DIR__ . '/../db/sse_trigger.txt', $ts);
 
         } catch (PDOException $e) {

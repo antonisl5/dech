@@ -1,28 +1,45 @@
-<?php
-// Initialize DB and fetch initial layout state if needed.
-// However, since we are using plain JS and SSE, we can do it all from the frontend
-// to keep it clean. But having it as .php makes it future-proof.
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Digital Signage Player</title>
-    <!-- Use GridStack CSS since we use its layout system (read-only mode) -->
-    <link href="https://cdn.jsdelivr.net/npm/gridstack@7.2.3/dist/gridstack.min.css" rel="stylesheet"/>
     <link rel="stylesheet" href="public/css/player.css">
 </head>
 <body>
-
-    <!-- Container for dynamic widgets -->
-    <div class="grid-container">
-        <!-- We use grid-stack strictly for display structure -->
-        <div class="grid-stack" id="playerGrid"></div>
+    <!-- Full-screen absolute canvas container -->
+    <div id="player-container" class="grid-container">
+        <!-- Widgets loaded via SSE and JSON -->
     </div>
 
-    <!-- No dependencies here for layout execution other than GridStack logic -->
-    <script src="https://cdn.jsdelivr.net/npm/gridstack@7.2.3/dist/gridstack-all.js"></script>
+    <!-- Container Queries for fluid responsive text size inside widgets -->
+    <style>
+        .grid-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            overflow: hidden;
+            background-color: #000; /* Overridden by global settings */
+        }
+
+        .widget-item {
+            position: absolute;
+            box-sizing: border-box;
+            /* Allow responsive text */
+            container-type: size;
+        }
+
+        /* Apply dynamic fluid typography to all text-based widgets */
+        .widget-item .content {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10cqi; /* 10% of container width as default */
+        }
+    </style>
+
     <script src="public/js/player.js"></script>
 </body>
 </html>

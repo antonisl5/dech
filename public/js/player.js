@@ -1,242 +1,268 @@
-// public/js/player.js
+document.addEventListener('DOMContentLoaded', () => {
+    const playerContainer = document.getElementById('player-container');
+    let widgets = {};
+    let activeIntervals = {};
+    let activeTimeouts = {};
 
-document.addEventListener('DOMContentLoaded', function () {
-    // 1. Maintain Perfect 16:9 Screen Scaling to match Admin
-    let gridContainer = document.querySelector('.grid-container');
-    let columns = 16;
-    let grid = null;
+    function initSSE() {
+        const source = new EventSource('api/sse.php');
 
-    function resizeContainer() {
-        let winW = window.innerWidth;
-        let winH = window.innerHeight;
-        let aspect = 16 / 9;
+        source.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.type === 'update') {
+                console.log("SSE Update triggered. Fetching layout...");
+                fetchLayout();
+            }
+        };
 
-        let calcW = winW;
-        let calcH = winW / aspect;
-
-        if (calcH > winH) {
-            calcH = winH;
-            calcW = winH * aspect;
-        }
-
-        gridContainer.style.width = calcW + 'px';
-        gridContainer.style.height = calcH + 'px';
-
-        return calcW / columns;
+        source.onerror = function(error) {
+            console.error("SSE Connection Error. Reconnecting...", error);
+            source.close();
+            setTimeout(initSSE, 5000);
+        };
     }
 
-    // Initialize Grid with precise cellHeight
-    function initGrid() {
-        if (grid) grid.destroy(false);
-        let cellH = resizeContainer();
-
-        grid = GridStack.init({
-            cellHeight: cellH + 'px',
-            staticGrid: true, // No drag & drop allowed
-            margin: 0,
-            column: columns
-        }, '#playerGrid');
-    }
-
-    window.addEventListener('resize', function() {
-        let cellH = resizeContainer();
-        if (grid) {
-            grid.cellHeight(cellH + 'px', true);
-        }
-    });
-
-    // Global Widget State to manage timers/intervals
-    let activeWidgets = {};
-
-    // 2. Fetch and Render Layout
-    function loadLayout() {
+    function fetchLayout() {
         fetch('api/get_layout.php')
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
-                if (data.widgets) {
-                    if (!grid) initGrid();
-
-                    // Stop current logic
-                    cleanupWidgets();
-                    grid.removeAll();
-
-                    data.widgets.forEach(w => {
-                        let widgetHtml = `
-                            <div class="grid-stack-item"
-                                 gs-x="${w.x}" gs-y="${w.y}"
-                                 gs-w="${w.w}" gs-h="${w.h}"
-                                 data-id="${w.id}">
-                                <div class="grid-stack-item-content">
-                                    <div class="widget-body" id="body_${w.id}"></div>
-                                </div>
-                            </div>
-                        `;
-                        grid.addWidget(widgetHtml);
-                        renderWidgetContent(w.id, w.type, w.config);
-                    });
+                if (data.success) {
+                    renderLayout(data);
                 }
             })
-            .catch(err => console.error("Error loading layout:", err));
+            .catch(err => console.error("Error fetching layout:", err));
     }
 
-    // 3. Clear existing timers and logic before re-rendering
-    function cleanupWidgets() {
-        for (let id in activeWidgets) {
-            let widgetData = activeWidgets[id];
-            if (widgetData.timer) clearInterval(widgetData.timer);
-            if (widgetData.interval) clearInterval(widgetData.interval);
+    function scaleCanvas() {
+        // Enforce exact 16:9 ratio in the player window regardless of screen size
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        let cWidth, cHeight;
+
+        if (w / h > 16 / 9) {
+            // Screen is wider than 16:9 (pillarbox)
+            cHeight = h;
+            cWidth = h * (16 / 9);
+        } else {
+            // Screen is taller than 16:9 (letterbox)
+            cWidth = w;
+            cHeight = w / (16 / 9);
         }
-        activeWidgets = {};
+
+        playerContainer.style.width = cWidth + 'px';
+        playerContainer.style.height = cHeight + 'px';
+
+        // Center the container
+        playerContainer.style.left = (w - cWidth) / 2 + 'px';
+        playerContainer.style.top = (h - cHeight) / 2 + 'px';
     }
 
-    // 4. Render Widget Logic
-    function renderWidgetContent(id, type, config) {
-        let container = document.getElementById(`body_${id}`);
-        if (!container) return;
-
-        // Initialize state tracker
-        activeWidgets[id] = { timer: null, interval: null, data: {} };
-        let state = activeWidgets[id];
-
-        // Apply Generic Styles from Admin Panel Customizations
-        container.style.color = config.color || '#ffffff';
-        container.style.backgroundColor = config.bg_color || 'transparent';
-
-        // Font size calculation (convert viewport width percentage if provided, or leave as string)
-        if (config.font_size) {
-            container.style.fontSize = config.font_size;
+    function renderLayout(data) {
+        // Apply Global Background
+        if (data.global_background_color) {
+            playerContainer.style.backgroundColor = data.global_background_color;
         }
 
-        if (type === 'clock') {
-            container.className = 'widget-body clock-widget';
+        clearAllIntervals();
+        playerContainer.innerHTML = '';
 
-            function updateClock() {
-                let now = new Date();
-                let hours = now.getHours();
-                let minutes = now.getMinutes().toString().padStart(2, '0');
-                let seconds = now.getSeconds().toString().padStart(2, '0');
-                let ampm = '';
+        data.widgets.forEach(w => {
+            const el = document.createElement('div');
+            el.className = `widget-item widget-${w.type}`;
+            el.id = 'p_' + w.id;
 
-                if (config.format === '12h') {
-                    ampm = hours >= 12 ? ' PM' : ' AM';
-                    hours = hours % 12;
-                    hours = hours ? hours : 12; // 0 = 12
+            // Apply absolute percentages
+            el.style.left = w.left + '%';
+            el.style.top = w.top + '%';
+            el.style.width = w.width + '%';
+            el.style.height = w.height + '%';
+            el.style.zIndex = w.z_index;
+
+            const contentWrapper = document.createElement('div');
+            contentWrapper.className = 'content';
+            el.appendChild(contentWrapper);
+
+            playerContainer.appendChild(el);
+            renderWidgetContent(contentWrapper, w);
+        });
+    }
+
+    function renderWidgetContent(container, data) {
+        const c = data.config;
+
+        // Apply general styles
+        if (c.bgColor) container.parentElement.style.backgroundColor = c.bgColor;
+        if (c.textColor) container.parentElement.style.color = c.textColor;
+        if (c.fontSize) container.style.fontSize = c.fontSize + 'cqi';
+
+        switch (data.type) {
+            case 'clock':
+                updateClock(container, c);
+                activeIntervals[data.id] = setInterval(() => updateClock(container, c), 1000);
+                break;
+            case 'media':
+                if (c.mediaType === 'video') {
+                    container.innerHTML = `<video src="${c.mediaUrl}" autoplay muted loop style="width:100%;height:100%;object-fit:cover;"></video>`;
+                } else if (c.mediaUrl) {
+                    container.innerHTML = `<img src="${c.mediaUrl}" alt="media" style="width:100%;height:100%;object-fit:cover;">`;
                 }
-
-                hours = hours.toString().padStart(2, '0');
-                container.innerHTML = `<span>${hours}:${minutes}:${seconds}${ampm}</span>`;
-            }
-
-            updateClock();
-            state.interval = setInterval(updateClock, 1000);
-
-        } else if (type === 'ticker') {
-            container.className = 'widget-body ticker-widget';
-
-            // Adjusting scrollamount based on speed configuration (1-100)
-            let speed = config.speed ? Math.max(1, Math.min(100, parseInt(config.speed))) : 50;
-            // Map 1-100 roughly to 1-30 scrollamount
-            let scrollAmt = Math.max(1, Math.round(speed * 0.3));
-
-            container.innerHTML = `<marquee scrollamount="${scrollAmt}">${config.text || ''}</marquee>`;
-
-        } else if (type === 'countdown') {
-            container.className = 'widget-body countdown-widget';
-            let targetDate = new Date(config.target_date || new Date().getTime() + 86400000);
-
-            function updateCountdown() {
-                let now = new Date();
-                let diff = targetDate.getTime() - now.getTime();
-
-                if (diff <= 0) {
-                    container.innerHTML = `
-                        <div style="font-size:0.5em;">${config.text}</div>
-                        <div>00d 00h 00m 00s</div>
-                    `;
-                    clearInterval(state.interval);
-                    return;
+                break;
+            case 'ticker':
+                container.innerHTML = `<div class="ticker-text" style="color:${c.textColor}">${c.text}</div>`;
+                break;
+            case 'countdown':
+                updateCountdown(container, c);
+                activeIntervals[data.id] = setInterval(() => updateCountdown(container, c), 1000);
+                break;
+            case 'youtube':
+                if (c.youtubeUrl) {
+                    const videoId = extractYouTubeID(c.youtubeUrl);
+                    if (videoId) {
+                        // Embed with autoplay, loop, mute, and hidden controls
+                        container.innerHTML = `<iframe
+                            src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&modestbranding=1"
+                            allow="autoplay; encrypted-media"
+                            allowfullscreen>
+                        </iframe>`;
+                    }
                 }
-
-                let days = Math.floor(diff / (1000 * 60 * 60 * 24));
-                let hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                let minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                let seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-                container.innerHTML = `
-                    <div style="font-size:0.5em;">${config.text}</div>
-                    <div>
-                        ${days}d
-                        ${hours.toString().padStart(2, '0')}h
-                        ${minutes.toString().padStart(2, '0')}m
-                        ${seconds.toString().padStart(2, '0')}s
-                    </div>
-                `;
-            }
-
-            updateCountdown();
-            state.interval = setInterval(updateCountdown, 1000);
-
-        } else if (type === 'media') {
-            container.className = 'widget-body media-widget';
-            if (config.media_url) {
-                if (config.type && config.type.startsWith('video')) {
-                    container.innerHTML = `<video src="${config.media_url}" autoplay loop muted></video>`;
-                } else {
-                    container.innerHTML = `<img src="${config.media_url}" alt="Media">`;
-                }
-            } else {
-                container.innerHTML = `<div>No Media</div>`;
-            }
-        } else if (type === 'youtube') {
-            container.className = 'widget-body youtube-widget';
-            if (config.youtube_url) {
-                let videoId = extractYouTubeId(config.youtube_url);
-                if (videoId) {
-                    // Mute is required for autoplay in most modern browsers.
-                    // Loop requires playlist parameter equal to videoId.
-                    let embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1`;
-                    container.innerHTML = `<iframe src="${embedUrl}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
-                } else {
-                    container.innerHTML = `<div>Invalid YouTube URL</div>`;
-                }
-            } else {
-                 container.innerHTML = `<div>No YouTube URL provided</div>`;
-            }
+                break;
+            case 'shape':
+                if (c.borderRadius) container.parentElement.style.borderRadius = c.borderRadius + '%';
+                break;
+            case 'freetext':
+                container.classList.add('freetext-content');
+                container.innerHTML = c.text; // Allows HTML like <br> or <b>
+                break;
+            case 'bambu':
+                fetchBambuData(container, c);
+                activeIntervals[data.id] = setInterval(() => fetchBambuData(container, c), 5000); // Poll every 5 seconds
+                break;
         }
     }
 
-    function extractYouTubeId(url) {
-        let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-        let match = url.match(regExp);
+    function extractYouTubeID(url) {
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+        const match = url.match(regExp);
         return (match && match[2].length === 11) ? match[2] : null;
     }
 
-    // 5. Connect to Server-Sent Events (SSE) for Real-Time Sync
-    function connectSSE() {
-        console.log("Connecting to SSE...");
-        let source = new EventSource('api/sse.php');
+    function updateClock(el, config) {
+        const now = new Date();
+        const opts = { timeZone: config.timezone || 'UTC' };
+        if (config.format === '12h') {
+            opts.hour12 = true;
+        } else {
+            opts.hour12 = false;
+        }
+        opts.hour = '2-digit';
+        opts.minute = '2-digit';
+        opts.second = '2-digit';
 
-        // Layout update received
-        source.addEventListener('layout_update', function(e) {
-            console.log("Layout update received from server!", e.data);
-            loadLayout(); // Refetch DB layout and update UI immediately
-        }, false);
-
-        // Keepalive received
-        source.addEventListener('message', function(e) {
-            // Ignore keepalive messages, handled implicitly
-        }, false);
-
-        // Reconnect on error
-        source.addEventListener('error', function(e) {
-            console.error("SSE connection lost. Reconnecting in 5 seconds...", e);
-            source.close();
-            setTimeout(connectSSE, 5000);
-        }, false);
+        el.innerHTML = new Intl.DateTimeFormat('en-US', opts).format(now);
     }
 
-    // Initial sequence
-    initGrid();
-    loadLayout();
-    connectSSE();
+    function updateCountdown(el, config) {
+        const target = new Date(config.targetDate).getTime();
+        const now = new Date().getTime();
+        const diff = target - now;
+
+        if (diff <= 0) {
+            el.innerHTML = `<div>${config.eventName}<br>00:00:00</div>`;
+            return;
+        }
+
+        const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const s = Math.floor((diff % (1000 * 60)) / 1000);
+
+        let timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        if (d > 0) {
+            timeStr = `${d}d ` + timeStr;
+        }
+
+        el.innerHTML = `<div>${config.eventName}<br>${timeStr}</div>`;
+    }
+
+    // Bambu Lab 3D Printer Fetching
+    function fetchBambuData(el, config) {
+        // Fetch from the local Python Flask service
+        fetch('http://localhost:5000/status')
+            .then(res => res.json())
+            .then(data => {
+                let printers = data; // Data is a direct array now: [{"id": 0, "percent": 0, "minutes": 0, "status": "OFF"}, ...]
+
+                // Map IDs to Names
+                const printerNames = {
+                    0: "P2S",
+                    1: "A1",
+                    2: "P1S"
+                };
+
+                // Filter if a specific ID is selected
+                if (config.printerId && config.printerId !== 'all') {
+                    const targetId = parseInt(config.printerId);
+                    printers = printers.filter(p => p.id === targetId);
+                }
+
+                if (!printers || printers.length === 0) {
+                    el.innerHTML = '<div style="color:red; font-size:4cqi;">No printers found</div>';
+                    return;
+                }
+
+                let html = '';
+                printers.forEach(p => {
+                    const prog = p.percent || 0;
+                    const name = printerNames[p.id] || \`Printer \${p.id}\`;
+                    const statusColor = p.status === 'RUNNING' ? '#00ff00' : (p.status === 'ERROR' ? '#ff0000' : '#cccccc');
+
+                    if (config.displayMode === 'percent') {
+                        // Minimalist mode
+                        html += \`
+                            <div style="margin-bottom: 5px; text-align: center;">
+                                <div style="font-size: 8cqi; font-weight: bold; color: \${statusColor};">\${prog}%</div>
+                                <div style="font-size: 3cqi; color: #888;">\${name}</div>
+                            </div>
+                        \`;
+                    } else {
+                        // Full mode
+                        html += \`
+                            <div style="width: 100%; margin-bottom: 15px;">
+                                <div class="bambu-title" style="color: \${statusColor};">\${name} - \${p.status}</div>
+                                <div class="bambu-progress-bar">
+                                    <div class="bambu-progress-fill" style="width: \${prog}%; background: \${statusColor};"></div>
+                                </div>
+                                <div class="bambu-details">
+                                    <span>\${prog}%</span>
+                                    <span>\${p.minutes || 0}m left</span>
+                                </div>
+                            </div>
+                        \`;
+                    }
+                });
+
+                // Allow scrolling if multiple printers exceed container height
+                el.style.overflowY = 'auto';
+                el.innerHTML = \`<div style="width:100%; padding: 10px; box-sizing: border-box;">\${html}</div>\`;
+            })
+            .catch(err => {
+                console.error("Error fetching Bambu status:", err);
+                el.innerHTML = '<div style="color:red; font-size:4cqi;">Failed to connect to 3D Printer Service</div>';
+            });
+    }
+
+    function clearAllIntervals() {
+        for (let id in activeIntervals) clearInterval(activeIntervals[id]);
+        activeIntervals = {};
+        for (let id in activeTimeouts) clearTimeout(activeTimeouts[id]);
+        activeTimeouts = {};
+    }
+
+    // Initial load and scaling
+    scaleCanvas();
+    window.addEventListener('resize', scaleCanvas);
+
+    fetchLayout();
+    initSSE();
 });

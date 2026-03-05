@@ -1,492 +1,551 @@
-// public/js/admin.js
+document.addEventListener('DOMContentLoaded', () => {
+    const canvasContainer = document.getElementById('canvas-container');
+    const saveLayoutBtn = document.getElementById('save-layout-btn');
+    const globalBgColorInput = document.getElementById('global-bg-color');
+    const widgetList = document.getElementById('widget-list');
 
-document.addEventListener('DOMContentLoaded', function () {
-    // 1. Calculate and set up grid cell height to match 16:9 ratio
-    // If we have 12 columns, and aspect ratio is 16:9,
-    // total rows = 12 * (9/16) = 6.75 rows roughly?
-    // Let's use 12 columns and 12 rows, making it a square grid mapping to the 16:9 box.
-    // Or we use 16 columns and 9 rows to match exactly. Let's do 16 columns and 9 rows.
-    let columns = 16;
-    let gridContainer = document.querySelector('.grid-container');
+    // Modals & Forms
+    const configModal = document.getElementById('config-modal');
+    const closeModal = document.querySelector('.close-modal');
+    const configForm = document.getElementById('config-form');
+    const configFields = document.getElementById('config-fields');
+    const configWidgetId = document.getElementById('config-widget-id');
+    const deleteWidgetBtn = document.getElementById('delete-widget-btn');
 
-    function getCellHeight() {
-        return gridContainer.clientWidth / columns;
+    // Layering controls
+    const btnBringForward = document.getElementById('btn-bring-forward');
+    const btnSendBackward = document.getElementById('btn-send-backward');
+    const configZIndex = document.getElementById('config-z-index');
+
+    let widgets = {};
+    let selectedWidgetId = null;
+    let draggedItemType = null;
+
+    // Load initial layout
+    fetch('api/get_layout.php')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                if (data.global_background_color) {
+                    globalBgColorInput.value = data.global_background_color;
+                    canvasContainer.style.backgroundColor = data.global_background_color;
+                }
+                data.widgets.forEach(w => {
+                    createWidgetElement(w);
+                });
+            }
+        });
+
+    // Global Background Color Live Update
+    globalBgColorInput.addEventListener('input', (e) => {
+        canvasContainer.style.backgroundColor = e.target.value;
+    });
+
+    // Drag from sidebar to canvas
+    const newWidgets = document.querySelectorAll('.new-widget');
+    newWidgets.forEach(nw => {
+        nw.setAttribute('draggable', true);
+        nw.addEventListener('dragstart', (e) => {
+            draggedItemType = e.target.closest('.new-widget').dataset.type;
+            e.dataTransfer.setData('text/plain', draggedItemType);
+        });
+    });
+
+    canvasContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    });
+
+    canvasContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (draggedItemType) {
+            // Calculate drop position relative to canvas percentages
+            const rect = canvasContainer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const leftPct = (x / rect.width) * 100;
+            const topPct = (y / rect.height) * 100;
+
+            const newWidgetData = {
+                id: 'w_' + Date.now(),
+                type: draggedItemType,
+                left: Math.max(0, Math.min(leftPct, 80)), // 20% width default
+                top: Math.max(0, Math.min(topPct, 80)), // 20% height default
+                width: 20,
+                height: 20,
+                z_index: 10,
+                config: getDefaultConfig(draggedItemType)
+            };
+            createWidgetElement(newWidgetData);
+            draggedItemType = null;
+        }
+    });
+
+    function getDefaultConfig(type) {
+        let config = {
+            textColor: '#ffffff',
+            bgColor: 'transparent',
+            fontSize: '10' // in cqi
+        };
+        switch (type) {
+            case 'clock':
+                config.timezone = 'UTC';
+                config.format = '24h';
+                break;
+            case 'media':
+                config.mediaUrl = '';
+                config.mediaType = 'image';
+                break;
+            case 'ticker':
+                config.text = 'Welcome to the display!';
+                config.speed = 'normal';
+                break;
+            case 'countdown':
+                config.targetDate = new Date().toISOString().split('T')[0] + 'T00:00';
+                config.eventName = 'Event';
+                break;
+            case 'youtube':
+                config.youtubeUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+                break;
+            case 'shape':
+                config.bgColor = '#007bff';
+                config.borderRadius = '0'; // 0 for square, 50 for circle
+                break;
+            case 'freetext':
+                config.text = 'Double click to edit text';
+                break;
+            case 'bambu':
+                config.printerId = 'all'; // or specific ID
+                config.displayMode = 'full'; // 'full' or 'percent'
+                config.bgColor = 'rgba(0,0,0,0.8)';
+                break;
+        }
+        return config;
     }
 
-    let grid = GridStack.init({
-        cellHeight: getCellHeight() + 'px',
-        margin: 0,
-        column: columns,
-        float: true,
-        acceptWidgets: true,
-        disableResize: false,
-        disableDrag: false
-    }, '#layoutGrid');
+    function createWidgetElement(wData) {
+        widgets[wData.id] = wData;
 
-    // Handle Resize
-    window.addEventListener('resize', function() {
-        grid.cellHeight(getCellHeight() + 'px', true);
-    });
+        const el = document.createElement('div');
+        el.className = `widget-item widget-${wData.type}`;
+        el.id = wData.id;
 
-    // Make the new widgets draggable into the grid stack
-    GridStack.setupDragIn('.new-widget', { appendTo: 'body', helper: 'clone' });
+        // Apply CSS absolute percentages
+        el.style.left = wData.left + '%';
+        el.style.top = wData.top + '%';
+        el.style.width = wData.width + '%';
+        el.style.height = wData.height + '%';
+        el.style.zIndex = wData.z_index;
 
-    // Handle dropping new widgets into the grid
-    grid.on('added', function(e, items) {
-        items.forEach(function(item) {
-            if (!item.el.hasAttribute('data-initialized')) {
-                // Determine widget type
-                let type = item.el.getAttribute('data-type');
-                if(!type) type = 'unknown';
+        // Content wrapper
+        const content = document.createElement('div');
+        content.className = 'content';
+        el.appendChild(content);
 
-                // Create a unique ID for the widget
-                let id = 'widget_' + Math.random().toString(36).substr(2, 9);
+        // Resize Handle
+        const resizeHandle = document.createElement('div');
+        resizeHandle.className = 'resize-handle';
+        el.appendChild(resizeHandle);
 
-                // Default styles
-                let baseConfig = { font_size: '2vw', color: '#000000', bg_color: 'transparent' };
+        canvasContainer.appendChild(el);
+        renderWidgetContent(el, wData);
 
-                // Set default configuration based on type
-                let config = { ...baseConfig };
-                if(type === 'clock') config = { format: '24h', color: '#000000', font_size: '4vw', bg_color: '#ffffff' };
-                if(type === 'ticker') config = { text: 'Welcome to our display!', speed: '50', color: '#000000', bg_color: '#ffffff', font_size: '2vw' };
-                if(type === 'media') config = { media_url: '', type: 'image', bg_color: '#000000' };
-                if(type === 'countdown') config = { target_date: new Date(new Date().getTime() + 24*60*60*1000).toISOString().slice(0, 16), text: 'Event starts in:', color: '#ff0000', font_size: '2vw', bg_color: '#ffffff' };
-                if(type === 'youtube') config = { youtube_url: '', bg_color: '#000000' };
+        // Click to select and open config
+        el.addEventListener('mousedown', () => {
+            selectWidget(wData.id);
+        });
+        el.addEventListener('dblclick', () => {
+            openConfigModal(wData.id);
+        });
+    }
 
-                // Store state in element data attributes
-                item.el.dataset.id = id;
-                item.el.dataset.type = type;
-                item.el.dataset.config = JSON.stringify(config);
-                item.el.setAttribute('data-initialized', 'true');
+    function renderWidgetContent(el, data) {
+        const content = el.querySelector('.content');
+        const c = data.config;
 
-                // Build the inner HTML for the grid item
-                let content = `
-                    <div class="widget-wrapper" style="width: 100%; height: 100%; position: relative;">
-                        <div class="widget-controls" style="position:absolute; top:5px; right:5px; z-index:100; opacity: 0.5;">
-                            <button class="control-btn config" style="background:#007bff; color:white; border:none; border-radius:3px; padding:3px 6px; cursor:pointer;" onclick="openConfigModal('${id}')">⚙️</button>
-                            <button class="control-btn remove" style="background:#dc3545; color:white; border:none; border-radius:3px; padding:3px 6px; cursor:pointer;" onclick="removeWidget('${id}')">❌</button>
-                        </div>
-                        <div class="widget-body" id="body_${id}" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;">
-                        </div>
-                    </div>
+        // Apply general styles
+        if (c.bgColor) el.style.backgroundColor = c.bgColor;
+        if (c.textColor) el.style.color = c.textColor;
+        if (c.fontSize) content.style.fontSize = c.fontSize + 'cqi';
+
+        // Reset specific styles
+        el.style.borderRadius = '0';
+
+        switch (data.type) {
+            case 'clock':
+                content.innerHTML = `<div>12:00:00</div>`;
+                break;
+            case 'media':
+                if (c.mediaType === 'video') {
+                    content.innerHTML = `<video src="${c.mediaUrl}" muted loop></video>`;
+                } else if (c.mediaUrl) {
+                    content.innerHTML = `<img src="${c.mediaUrl}" alt="media">`;
+                } else {
+                    content.innerHTML = `<span>No Media Selected</span>`;
+                }
+                break;
+            case 'ticker':
+                content.innerHTML = `<div class="ticker-text" style="color:${c.textColor}">${c.text}</div>`;
+                break;
+            case 'countdown':
+                content.innerHTML = `<div>${c.eventName}<br>00:00:00</div>`;
+                break;
+            case 'youtube':
+                content.innerHTML = `<div style="background:red;color:white;padding:10px;text-align:center;">YouTube Video<br><small>${c.youtubeUrl}</small></div>`;
+                break;
+            case 'shape':
+                if (c.borderRadius) el.style.borderRadius = c.borderRadius + '%';
+                content.innerHTML = '';
+                break;
+            case 'freetext':
+                content.innerHTML = `<div style="text-align:center;">${c.text}</div>`;
+                break;
+            case 'bambu':
+                content.innerHTML = `
+                    <div class="bambu-title">3D Printer</div>
+                    <div class="bambu-progress-bar"><div class="bambu-progress-fill" style="width: 50%;"></div></div>
+                    <div class="bambu-details">50% | 2h 30m</div>
                 `;
-                item.el.querySelector('.grid-stack-item-content').innerHTML = content;
-                updateWidgetPreview(id);
-            }
-        });
-    });
+                break;
+        }
+    }
 
-    // Remove inline hover effects and put them back to hover in JS/CSS
-    const addHoverEffect = () => {
-        document.querySelectorAll('.widget-wrapper').forEach(el => {
-            el.addEventListener('mouseenter', () => { el.querySelector('.widget-controls').style.opacity = 1; });
-            el.addEventListener('mouseleave', () => { el.querySelector('.widget-controls').style.opacity = 0.5; });
-        });
-    };
-    grid.on('added', addHoverEffect);
+    // --- INTERACT.JS LOGIC FOR DRAG AND RESIZE ---
+    interact('.widget-item')
+        .draggable({
+            inertia: true,
+            modifiers: [
+                interact.modifiers.restrictRect({
+                    restriction: 'parent',
+                    endOnly: true
+                })
+            ],
+            autoScroll: true,
+            listeners: {
+                start(event) {
+                    selectWidget(event.target.id);
+                },
+                move(event) {
+                    const target = event.target;
+                    const id = target.id;
+                    const wData = widgets[id];
 
-    // 2. Load Initial Layout
-    fetch('api/get_layout.php')
-        .then(response => response.json())
-        .then(data => {
-            if (data.widgets && data.widgets.length > 0) {
-                grid.removeAll();
+                    // Convert pixel movement to percentages relative to container
+                    const rect = canvasContainer.getBoundingClientRect();
+                    const dxPct = (event.dx / rect.width) * 100;
+                    const dyPct = (event.dy / rect.height) * 100;
 
-                data.widgets.forEach(w => {
-                    let widgetHtml = `
-                        <div class="grid-stack-item"
-                             gs-x="${w.x}" gs-y="${w.y}"
-                             gs-w="${w.w}" gs-h="${w.h}"
-                             data-id="${w.id}"
-                             data-type="${w.type}"
-                             data-config='${JSON.stringify(w.config)}'
-                             data-initialized="true">
-                            <div class="grid-stack-item-content">
-                                <div class="widget-wrapper" style="width: 100%; height: 100%; position: relative;">
-                                    <div class="widget-controls" style="position:absolute; top:5px; right:5px; z-index:100; opacity: 0.5;">
-                                        <button class="control-btn config" style="background:#007bff; color:white; border:none; border-radius:3px; padding:3px 6px; cursor:pointer;" onclick="openConfigModal('${w.id}')">⚙️</button>
-                                        <button class="control-btn remove" style="background:#dc3545; color:white; border:none; border-radius:3px; padding:3px 6px; cursor:pointer;" onclick="removeWidget('${w.id}')">❌</button>
-                                    </div>
-                                    <div class="widget-body" id="body_${w.id}" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;">
-                                        Loading...
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    grid.addWidget(widgetHtml);
-                    updateWidgetPreview(w.id);
-                });
-                addHoverEffect();
+                    wData.left += dxPct;
+                    wData.top += dyPct;
+
+                    target.style.left = wData.left + '%';
+                    target.style.top = wData.top + '%';
+                }
             }
         })
-        .catch(err => console.error("Error loading layout:", err));
+        .resizable({
+            // resize from all edges and corners
+            edges: { left: false, right: '.resize-handle', bottom: '.resize-handle', top: false },
+            modifiers: [
+                interact.modifiers.restrictEdges({
+                    outer: 'parent'
+                }),
+                interact.modifiers.restrictSize({
+                    min: { width: 50, height: 50 } // min 50px
+                })
+            ],
+            inertia: true,
+            listeners: {
+                start(event) {
+                    selectWidget(event.target.id);
+                },
+                move: function (event) {
+                    let { x, y } = event.target.dataset;
+                    const target = event.target;
+                    const id = target.id;
+                    const wData = widgets[id];
+                    const rect = canvasContainer.getBoundingClientRect();
 
-    // 3. Save Layout
-    document.getElementById('saveLayoutBtn').addEventListener('click', function() {
-        let items = grid.getGridItems();
-        let layoutData = [];
+                    // Convert pixel size to percentages
+                    const widthPct = (event.rect.width / rect.width) * 100;
+                    const heightPct = (event.rect.height / rect.height) * 100;
 
-        items.forEach(item => {
-            let node = item.gridstackNode;
-            let el = item;
+                    wData.width = widthPct;
+                    wData.height = heightPct;
 
-            if (el.dataset.id) {
-                layoutData.push({
-                    id: el.dataset.id,
-                    type: el.dataset.type,
-                    x: node.x,
-                    y: node.y,
-                    w: node.w,
-                    h: node.h,
-                    config: JSON.parse(el.dataset.config || '{}')
-                });
+                    target.style.width = widthPct + '%';
+                    target.style.height = heightPct + '%';
+                }
             }
         });
 
-        let saveStatus = document.getElementById('saveStatus');
-        saveStatus.textContent = 'Saving...';
+    function selectWidget(id) {
+        document.querySelectorAll('.widget-item').forEach(el => el.classList.remove('is-selected'));
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.add('is-selected');
+            selectedWidgetId = id;
+            // Bring to top visually during interaction without saving yet
+            el.style.zIndex = parseInt(widgets[id].z_index) + 100;
+        }
+    }
+
+    // Deselect on clicking canvas background
+    canvasContainer.addEventListener('mousedown', (e) => {
+        if (e.target === canvasContainer) {
+            document.querySelectorAll('.widget-item').forEach(el => {
+                el.classList.remove('is-selected');
+                el.style.zIndex = widgets[el.id].z_index; // restore real z-index
+            });
+            selectedWidgetId = null;
+        }
+    });
+
+    // Configuration Modal
+    function openConfigModal(id) {
+        const data = widgets[id];
+        configWidgetId.value = id;
+        document.getElementById('modal-title').innerText = `Configure ${data.type}`;
+
+        let fieldsHtml = '';
+        const c = data.config;
+
+        // Common Fields
+        fieldsHtml += `
+            <div class="form-group">
+                <label>Text Color</label>
+                <input type="color" id="cfg-textColor" class="form-control" value="${c.textColor || '#ffffff'}">
+            </div>
+            <div class="form-group">
+                <label>Background Color (Transparent: leave blank or #00000000)</label>
+                <input type="text" id="cfg-bgColor" class="form-control" value="${c.bgColor || 'transparent'}">
+            </div>
+            <div class="form-group">
+                <label>Font Size (Container % - cqi)</label>
+                <input type="number" id="cfg-fontSize" class="form-control" value="${c.fontSize || '10'}">
+            </div>
+        `;
+
+        // Specific Fields
+        if (data.type === 'clock') {
+            fieldsHtml += `
+                <div class="form-group">
+                    <label>Timezone</label>
+                    <input type="text" id="cfg-timezone" class="form-control" value="${c.timezone || 'UTC'}">
+                </div>
+            `;
+        } else if (data.type === 'media') {
+            fieldsHtml += `
+                <div class="form-group">
+                    <label>Media URL (Select from Library below or paste)</label>
+                    <input type="text" id="cfg-mediaUrl" class="form-control" value="${c.mediaUrl || ''}">
+                </div>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="cfg-mediaType" class="form-control">
+                        <option value="image" ${c.mediaType==='image'?'selected':''}>Image</option>
+                        <option value="video" ${c.mediaType==='video'?'selected':''}>Video</option>
+                    </select>
+                </div>
+            `;
+        } else if (data.type === 'ticker') {
+             fieldsHtml += `
+                <div class="form-group">
+                    <label>Ticker Text</label>
+                    <input type="text" id="cfg-text" class="form-control" value="${c.text || ''}">
+                </div>
+            `;
+        } else if (data.type === 'countdown') {
+             fieldsHtml += `
+                <div class="form-group">
+                    <label>Event Name</label>
+                    <input type="text" id="cfg-eventName" class="form-control" value="${c.eventName || ''}">
+                </div>
+                <div class="form-group">
+                    <label>Target Date & Time</label>
+                    <input type="datetime-local" id="cfg-targetDate" class="form-control" value="${c.targetDate || ''}">
+                </div>
+            `;
+        } else if (data.type === 'youtube') {
+            fieldsHtml += `
+               <div class="form-group">
+                   <label>YouTube URL</label>
+                   <input type="text" id="cfg-youtubeUrl" class="form-control" value="${c.youtubeUrl || ''}">
+               </div>
+           `;
+        } else if (data.type === 'shape') {
+            fieldsHtml += `
+               <div class="form-group">
+                   <label>Border Radius (%)</label>
+                   <input type="number" id="cfg-borderRadius" class="form-control" value="${c.borderRadius || '0'}" max="50">
+                   <small style="color:#aaa;">0 = Square, 50 = Circle</small>
+               </div>
+           `;
+        } else if (data.type === 'freetext') {
+            fieldsHtml += `
+               <div class="form-group">
+                   <label>Text Content (HTML allowed)</label>
+                   <textarea id="cfg-text" class="form-control" rows="4">${c.text || ''}</textarea>
+               </div>
+           `;
+        } else if (data.type === 'bambu') {
+            fieldsHtml += `
+               <div class="form-group">
+                   <label>Printer (or 'all')</label>
+                   <select id="cfg-printerId" class="form-control">
+                       <option value="all" ${c.printerId==='all'?'selected':''}>All Printers</option>
+                       <option value="0" ${c.printerId==='0'?'selected':''}>P2S (ID: 0)</option>
+                       <option value="1" ${c.printerId==='1'?'selected':''}>A1 (ID: 1)</option>
+                       <option value="2" ${c.printerId==='2'?'selected':''}>P1S (ID: 2)</option>
+                   </select>
+               </div>
+               <div class="form-group">
+                    <label>Display Mode</label>
+                    <select id="cfg-displayMode" class="form-control">
+                        <option value="full" ${c.displayMode==='full'?'selected':''}>Full (Bar + Text)</option>
+                        <option value="percent" ${c.displayMode==='percent'?'selected':''}>Percent Only</option>
+                    </select>
+                </div>
+           `;
+        }
+
+        configFields.innerHTML = fieldsHtml;
+        configZIndex.value = data.z_index;
+        configModal.style.display = 'block';
+    }
+
+    closeModal.onclick = () => { configModal.style.display = 'none'; };
+    window.onclick = (event) => {
+        if (event.target == configModal) configModal.style.display = 'none';
+    };
+
+    // Layering Adjustments in Modal
+    btnBringForward.onclick = () => {
+        configZIndex.value = parseInt(configZIndex.value) + 1;
+    };
+    btnSendBackward.onclick = () => {
+        configZIndex.value = Math.max(0, parseInt(configZIndex.value) - 1);
+    };
+
+    configForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const id = configWidgetId.value;
+        const data = widgets[id];
+
+        data.z_index = parseInt(configZIndex.value);
+
+        // Save dynamic fields back to config object
+        const inputs = configFields.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            if (input.id.startsWith('cfg-')) {
+                const key = input.id.replace('cfg-', '');
+                data.config[key] = input.value;
+            }
+        });
+
+        const el = document.getElementById(id);
+        el.style.zIndex = data.z_index;
+        renderWidgetContent(el, data);
+        configModal.style.display = 'none';
+    });
+
+    deleteWidgetBtn.addEventListener('click', () => {
+        const id = configWidgetId.value;
+        document.getElementById(id).remove();
+        delete widgets[id];
+        configModal.style.display = 'none';
+    });
+
+    // Save Layout
+    saveLayoutBtn.addEventListener('click', () => {
+        const layoutData = {
+            global_background_color: globalBgColorInput.value,
+            widgets: Object.values(widgets)
+        };
 
         fetch('api/save_layout.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ widgets: layoutData })
+            body: JSON.stringify(layoutData)
         })
-        .then(response => response.json())
+        .then(res => res.json())
         .then(data => {
-            if(data.success) {
-                saveStatus.style.color = 'green';
-                saveStatus.textContent = 'Layout saved & screen updated!';
-                setTimeout(() => saveStatus.textContent = '', 3000);
+            if (data.success) {
+                alert('Layout saved successfully! Display screens will update automatically.');
+                // Restore real z-indexes
+                document.querySelectorAll('.widget-item').forEach(el => {
+                    if(widgets[el.id]) el.style.zIndex = widgets[el.id].z_index;
+                });
             } else {
-                saveStatus.style.color = 'red';
-                saveStatus.textContent = 'Error saving layout.';
+                alert('Error: ' + data.message);
             }
-        })
-        .catch(err => {
-            console.error("Save error:", err);
-            saveStatus.style.color = 'red';
-            saveStatus.textContent = 'Network error.';
         });
     });
 
-    // 4. Media Upload
-    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    // Media Library Upload Logic
+    const uploadForm = document.getElementById('upload-form');
+    const uploadStatus = document.getElementById('upload-status');
+    const mediaLibrary = document.getElementById('media-library');
+
+    uploadForm.addEventListener('submit', function(e) {
         e.preventDefault();
+        const fileInput = document.getElementById('media-file');
+        const file = fileInput.files[0];
+        if (!file) return;
 
-        let formData = new FormData();
-        let fileInput = document.getElementById('mediaFile');
-        let status = document.getElementById('uploadStatus');
+        const formData = new FormData();
+        formData.append('file', file);
 
-        if(fileInput.files.length === 0) return;
+        uploadStatus.innerHTML = '<span style="color: yellow;">Uploading...</span>';
 
-        formData.append('file', fileInput.files[0]);
-        status.innerHTML = '<span style="color:blue;">Uploading...</span>';
-
-        fetch('api/upload.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
+        fetch('api/upload.php', { method: 'POST', body: formData })
+        .then(res => res.json())
         .then(data => {
-            if(data.success) {
-                status.innerHTML = '<span style="color:green;">Upload successful!</span>';
-                fileInput.value = ''; // clear
-                loadMediaLibrary(); // refresh library
+            if (data.success) {
+                uploadStatus.innerHTML = '<span style="color: green;">Upload successful!</span>';
+                loadMediaLibrary();
+                uploadForm.reset();
             } else {
-                status.innerHTML = '<span style="color:red;">Error: ' + data.message + '</span>';
+                uploadStatus.innerHTML = `<span style="color: red;">Error: ${data.message}</span>`;
             }
         })
         .catch(err => {
-            console.error(err);
-            status.innerHTML = '<span style="color:red;">Upload failed.</span>';
+            uploadStatus.innerHTML = '<span style="color: red;">Upload failed.</span>';
         });
     });
+
+    function loadMediaLibrary() {
+        fetch('api/get_media.php')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                mediaLibrary.innerHTML = '';
+                data.media.forEach(item => {
+                    const el = document.createElement('div');
+                    el.className = 'media-item';
+
+                    if (item.type.startsWith('image/')) {
+                        el.innerHTML = `<img src="${item.filepath}" alt="${item.filename}">
+                                        <div class="filename">${item.filename}</div>`;
+                    } else if (item.type.startsWith('video/')) {
+                         el.innerHTML = `<div style="height:60px; background:#444; color:white; display:flex; align-items:center; justify-content:center;">🎥 Video</div>
+                                        <div class="filename">${item.filename}</div>`;
+                    }
+
+                    // Click to copy URL to clipboard for use in widgets
+                    el.addEventListener('click', () => {
+                        const url = window.location.origin + '/' + item.filepath.replace('../', '');
+                        navigator.clipboard.writeText(url).then(() => {
+                            alert(`Copied URL to clipboard:\n${url}`);
+                        });
+                    });
+
+                    mediaLibrary.appendChild(el);
+                });
+            }
+        });
+    }
 
     loadMediaLibrary();
 });
-
-// --- GLOBAL FUNCTIONS ---
-
-window.removeWidget = function(id) {
-    let el = document.querySelector(`.grid-stack-item[data-id="${id}"]`);
-    if (el) {
-        let grid = el.gridstackNode.grid;
-        grid.removeWidget(el);
-    }
-};
-
-let currentConfigWidgetId = null;
-
-window.openConfigModal = function(id) {
-    let el = document.querySelector(`.grid-stack-item[data-id="${id}"]`);
-    if (!el) return;
-
-    currentConfigWidgetId = id;
-    let type = el.dataset.type;
-    let config = JSON.parse(el.dataset.config || '{}');
-
-    document.getElementById('modalTitle').textContent = `Configure ${type.toUpperCase()} Widget`;
-    let modalBody = document.getElementById('modalBody');
-
-    // Build common style fields
-    let styleHtml = `
-        <hr>
-        <h4>Styling</h4>
-        <div class="form-group">
-            <label>Font Size (e.g. 2vw, 24px)</label>
-            <input type="text" id="cfg_font_size" value="${config.font_size || '2vw'}">
-        </div>
-        <div class="form-group">
-            <label>Text Color</label>
-            <input type="color" id="cfg_color" value="${config.color || '#000000'}">
-        </div>
-        <div class="form-group">
-            <label>Background Color (use #RRGGBBAA or transparent)</label>
-            <input type="text" id="cfg_bg_color" value="${config.bg_color || 'transparent'}">
-        </div>
-    `;
-
-    let formHtml = '';
-
-    if (type === 'clock') {
-        formHtml = `
-            <div class="form-group">
-                <label>Format</label>
-                <select id="cfg_format">
-                    <option value="12h" ${config.format === '12h' ? 'selected' : ''}>12-Hour (AM/PM)</option>
-                    <option value="24h" ${config.format === '24h' ? 'selected' : ''}>24-Hour</option>
-                </select>
-            </div>
-        `;
-    } else if (type === 'ticker') {
-        formHtml = `
-            <div class="form-group">
-                <label>Ticker Text</label>
-                <input type="text" id="cfg_text" value="${config.text || ''}">
-            </div>
-            <div class="form-group">
-                <label>Speed (1-100)</label>
-                <input type="number" id="cfg_speed" value="${config.speed || '50'}" min="1" max="100">
-            </div>
-        `;
-    } else if (type === 'countdown') {
-        formHtml = `
-            <div class="form-group">
-                <label>Label Text</label>
-                <input type="text" id="cfg_text" value="${config.text || 'Event starts in:'}">
-            </div>
-            <div class="form-group">
-                <label>Target Date & Time</label>
-                <input type="datetime-local" id="cfg_target_date" value="${config.target_date || ''}">
-            </div>
-        `;
-    } else if (type === 'media') {
-        formHtml = `
-            <div class="form-group">
-                <label>Select Media</label>
-                <select id="cfg_media_url">
-                    <option value="">Loading media...</option>
-                </select>
-            </div>
-        `;
-        fetch('api/get_media.php')
-            .then(r => r.json())
-            .then(data => {
-                let select = document.getElementById('cfg_media_url');
-                if(!select) return;
-                select.innerHTML = '<option value="">-- Select Media --</option>';
-                data.media.forEach(m => {
-                    let path = 'media/' + m.filename;
-                    let selected = (config.media_url === path) ? 'selected' : '';
-                    select.innerHTML += `<option value="${path}" data-mtype="${m.type}" ${selected}>${m.filename}</option>`;
-                });
-            });
-    } else if (type === 'youtube') {
-        formHtml = `
-            <div class="form-group">
-                <label>YouTube URL</label>
-                <input type="text" id="cfg_youtube_url" placeholder="https://www.youtube.com/watch?v=..." value="${config.youtube_url || ''}">
-            </div>
-        `;
-        // No font size or text color needed for YouTube video wrapper
-        styleHtml = `
-        <hr>
-        <h4>Styling</h4>
-        <div class="form-group">
-            <label>Background Color</label>
-            <input type="text" id="cfg_bg_color" value="${config.bg_color || '#000000'}">
-        </div>
-        `;
-    } else if (type === 'media' && !styleHtml) {
-        styleHtml = `
-        <hr>
-        <h4>Styling</h4>
-        <div class="form-group">
-            <label>Background Color</label>
-            <input type="text" id="cfg_bg_color" value="${config.bg_color || '#000000'}">
-        </div>
-        `;
-    }
-
-    modalBody.innerHTML = formHtml + styleHtml;
-    document.getElementById('configModal').style.display = 'block';
-};
-
-document.getElementById('cancelConfigBtn').addEventListener('click', closeConfigModal);
-document.querySelector('.close-modal').addEventListener('click', closeConfigModal);
-
-function closeConfigModal() {
-    document.getElementById('configModal').style.display = 'none';
-    currentConfigWidgetId = null;
-}
-
-document.getElementById('saveConfigBtn').addEventListener('click', function() {
-    if (!currentConfigWidgetId) return;
-
-    let el = document.querySelector(`.grid-stack-item[data-id="${currentConfigWidgetId}"]`);
-    if (!el) return;
-
-    let type = el.dataset.type;
-    let newConfig = {};
-
-    // Save general styles
-    let sizeEl = document.getElementById('cfg_font_size');
-    let colorEl = document.getElementById('cfg_color');
-    let bgEl = document.getElementById('cfg_bg_color');
-
-    if(sizeEl) newConfig.font_size = sizeEl.value;
-    if(colorEl) newConfig.color = colorEl.value;
-    if(bgEl) newConfig.bg_color = bgEl.value;
-
-    if (type === 'clock') {
-        newConfig.format = document.getElementById('cfg_format').value;
-    } else if (type === 'ticker') {
-        newConfig.text = document.getElementById('cfg_text').value;
-        newConfig.speed = document.getElementById('cfg_speed').value;
-    } else if (type === 'countdown') {
-        newConfig.text = document.getElementById('cfg_text').value;
-        newConfig.target_date = document.getElementById('cfg_target_date').value;
-    } else if (type === 'media') {
-        let select = document.getElementById('cfg_media_url');
-        newConfig.media_url = select.value;
-        if(select.options.length > 0 && select.selectedIndex > 0) {
-            newConfig.type = select.options[select.selectedIndex].getAttribute('data-mtype');
-        }
-    } else if (type === 'youtube') {
-        newConfig.youtube_url = document.getElementById('cfg_youtube_url').value;
-    }
-
-    el.dataset.config = JSON.stringify(newConfig);
-    updateWidgetPreview(currentConfigWidgetId);
-    closeConfigModal();
-});
-
-
-function updateWidgetPreview(id) {
-    let el = document.querySelector(`.grid-stack-item[data-id="${id}"]`);
-    if (!el) return;
-
-    let type = el.dataset.type;
-    let config = JSON.parse(el.dataset.config || '{}');
-    let body = el.querySelector('.widget-body');
-
-    // Apply generic styles
-    body.style.backgroundColor = config.bg_color || 'transparent';
-    body.style.color = config.color || '#000';
-    body.style.fontSize = config.font_size || '2vw';
-
-    if (type === 'clock') {
-        body.innerHTML = `<div style="text-align:center;"><span style="font-weight:bold;">12:00:00</span><br><small style="font-size:0.5em;">${config.format} Clock</small></div>`;
-    } else if (type === 'ticker') {
-        body.innerHTML = `<marquee scrollamount="5" style="width:100%;">${config.text || 'Ticker Text'}</marquee>`;
-    } else if (type === 'countdown') {
-        body.innerHTML = `<div style="text-align:center;"><small style="font-size:0.5em;">${config.text}</small><br><span style="font-weight:bold;">00d 00h 00m</span></div>`;
-    } else if (type === 'media') {
-        if (config.media_url) {
-            if (config.type && config.type.startsWith('video')) {
-                body.innerHTML = `<video src="${config.media_url}" style="width:100%; height:100%; object-fit:cover;" controls></video>`;
-            } else {
-                body.innerHTML = `<img src="${config.media_url}" style="width:100%; height:100%; object-fit:contain;">`;
-            }
-        } else {
-            body.innerHTML = `<div style="font-size:1vw;">No Media Selected</div>`;
-        }
-    } else if (type === 'youtube') {
-        if (config.youtube_url) {
-            let videoId = extractYouTubeId(config.youtube_url);
-            if(videoId) {
-                body.innerHTML = `<img src="https://img.youtube.com/vi/${videoId}/hqdefault.jpg" style="width:100%; height:100%; object-fit:cover;">
-                <div style="position:absolute; background:rgba(0,0,0,0.6); padding:5px; border-radius:5px; color:#fff; font-size:1vw;">YouTube Video</div>`;
-            } else {
-                body.innerHTML = `<div style="font-size:1vw;">Invalid YouTube URL</div>`;
-            }
-        } else {
-            body.innerHTML = `<div style="font-size:1vw;">No YouTube Video Selected</div>`;
-        }
-    }
-}
-
-function extractYouTubeId(url) {
-    let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    let match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-}
-
-function loadMediaLibrary() {
-    let gallery = document.getElementById('mediaGallery');
-    gallery.innerHTML = '<p class="loading">Loading media...</p>';
-
-    fetch('api/get_media.php')
-        .then(response => response.json())
-        .then(data => {
-            gallery.innerHTML = '';
-            if(!data.media || data.media.length === 0) {
-                gallery.innerHTML = '<p>No media uploaded.</p>';
-                return;
-            }
-
-            data.media.forEach(m => {
-                let div = document.createElement('div');
-                div.className = 'media-item';
-                div.title = m.filename;
-
-                let mediaPath = 'media/' + m.filename;
-                let content = '';
-
-                if (m.type.startsWith('image')) {
-                    content = `<img src="${mediaPath}" alt="${m.filename}">`;
-                } else if (m.type.startsWith('video')) {
-                    content = `<video src="${mediaPath}" muted></video>`;
-                }
-
-                div.innerHTML = `
-                    ${content}
-                    <div class="delete-media" onclick="deleteMedia(${m.id}, '${m.filename}')">x</div>
-                `;
-                gallery.appendChild(div);
-            });
-        })
-        .catch(err => {
-            console.error(err);
-            gallery.innerHTML = '<p style="color:red;">Error loading media</p>';
-        });
-}
-
-window.deleteMedia = function(id, filename) {
-    if(!confirm('Are you sure you want to delete ' + filename + '?')) return;
-
-    fetch('api/delete_media.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'id=' + id
-    })
-    .then(r => r.json())
-    .then(data => {
-        if(data.success) {
-            loadMediaLibrary();
-        } else {
-            alert('Error deleting media: ' + data.message);
-        }
-    });
-};
