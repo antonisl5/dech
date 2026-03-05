@@ -54,6 +54,12 @@ require_login();
                             <span>Countdown</span>
                         </div>
                     </div>
+                    <div class="new-widget grid-stack-item ui-draggable" data-type="youtube" gs-w="6" gs-h="4" style="padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; text-align: center; cursor: move; width: 100%; box-sizing: border-box; background: #fff;">
+                        <div class="grid-stack-item-content">
+                            <div class="widget-icon">▶️</div>
+                            <span>YouTube</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 

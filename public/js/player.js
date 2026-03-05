@@ -1,13 +1,49 @@
 // public/js/player.js
 
 document.addEventListener('DOMContentLoaded', function () {
-    // 1. Initialize Player Grid (Static/Read-Only)
-    let grid = GridStack.init({
-        cellHeight: '8.33vh', // 12 columns means ~ 100vh / 12 rows
-        staticGrid: true, // No drag & drop allowed
-        margin: 0,
-        column: 12
-    }, '#playerGrid');
+    // 1. Maintain Perfect 16:9 Screen Scaling to match Admin
+    let gridContainer = document.querySelector('.grid-container');
+    let columns = 16;
+    let grid = null;
+
+    function resizeContainer() {
+        let winW = window.innerWidth;
+        let winH = window.innerHeight;
+        let aspect = 16 / 9;
+
+        let calcW = winW;
+        let calcH = winW / aspect;
+
+        if (calcH > winH) {
+            calcH = winH;
+            calcW = winH * aspect;
+        }
+
+        gridContainer.style.width = calcW + 'px';
+        gridContainer.style.height = calcH + 'px';
+
+        return calcW / columns;
+    }
+
+    // Initialize Grid with precise cellHeight
+    function initGrid() {
+        if (grid) grid.destroy(false);
+        let cellH = resizeContainer();
+
+        grid = GridStack.init({
+            cellHeight: cellH + 'px',
+            staticGrid: true, // No drag & drop allowed
+            margin: 0,
+            column: columns
+        }, '#playerGrid');
+    }
+
+    window.addEventListener('resize', function() {
+        let cellH = resizeContainer();
+        if (grid) {
+            grid.cellHeight(cellH + 'px', true);
+        }
+    });
 
     // Global Widget State to manage timers/intervals
     let activeWidgets = {};
@@ -18,9 +54,10 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.widgets) {
+                    if (!grid) initGrid();
+
                     // Stop current logic
                     cleanupWidgets();
-
                     grid.removeAll();
 
                     data.widgets.forEach(w => {
@@ -61,9 +98,17 @@ document.addEventListener('DOMContentLoaded', function () {
         activeWidgets[id] = { timer: null, interval: null, data: {} };
         let state = activeWidgets[id];
 
+        // Apply Generic Styles from Admin Panel Customizations
+        container.style.color = config.color || '#ffffff';
+        container.style.backgroundColor = config.bg_color || 'transparent';
+
+        // Font size calculation (convert viewport width percentage if provided, or leave as string)
+        if (config.font_size) {
+            container.style.fontSize = config.font_size;
+        }
+
         if (type === 'clock') {
             container.className = 'widget-body clock-widget';
-            container.style.color = config.color || '#ffffff';
 
             function updateClock() {
                 let now = new Date();
@@ -79,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
 
                 hours = hours.toString().padStart(2, '0');
-                container.innerHTML = `<span style="font-size: ${config.size || '6'}vw;">${hours}:${minutes}:${seconds}${ampm}</span>`;
+                container.innerHTML = `<span>${hours}:${minutes}:${seconds}${ampm}</span>`;
             }
 
             updateClock();
@@ -87,19 +132,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
         } else if (type === 'ticker') {
             container.className = 'widget-body ticker-widget';
-            container.style.color = config.color || '#ffffff';
-            container.style.backgroundColor = config.bg || 'transparent';
 
-            // Adjusting scrollamount for different sizes
-            let speed = config.speed ? Math.max(1, Math.min(100, parseInt(config.speed))) : 10;
-            // 50 speed mapped to roughly scrollamount 15
-            let scrollAmt = Math.round(speed * 0.3);
+            // Adjusting scrollamount based on speed configuration (1-100)
+            let speed = config.speed ? Math.max(1, Math.min(100, parseInt(config.speed))) : 50;
+            // Map 1-100 roughly to 1-30 scrollamount
+            let scrollAmt = Math.max(1, Math.round(speed * 0.3));
 
             container.innerHTML = `<marquee scrollamount="${scrollAmt}">${config.text || ''}</marquee>`;
 
         } else if (type === 'countdown') {
             container.className = 'widget-body countdown-widget';
-            container.style.color = config.color || '#ff0000';
             let targetDate = new Date(config.target_date || new Date().getTime() + 86400000);
 
             function updateCountdown() {
@@ -108,8 +150,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 if (diff <= 0) {
                     container.innerHTML = `
-                        <span>${config.text}</span>
-                        <div class="time-left">00d 00h 00m 00s</div>
+                        <div style="font-size:0.5em;">${config.text}</div>
+                        <div>00d 00h 00m 00s</div>
                     `;
                     clearInterval(state.interval);
                     return;
@@ -121,8 +163,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 let seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
                 container.innerHTML = `
-                    <span>${config.text}</span>
-                    <div class="time-left">
+                    <div style="font-size:0.5em;">${config.text}</div>
+                    <div>
                         ${days}d
                         ${hours.toString().padStart(2, '0')}h
                         ${minutes.toString().padStart(2, '0')}m
@@ -143,15 +185,33 @@ document.addEventListener('DOMContentLoaded', function () {
                     container.innerHTML = `<img src="${config.media_url}" alt="Media">`;
                 }
             } else {
-                container.innerHTML = `<div style="color: #666; font-size:2vw;">No Media</div>`;
+                container.innerHTML = `<div>No Media</div>`;
+            }
+        } else if (type === 'youtube') {
+            container.className = 'widget-body youtube-widget';
+            if (config.youtube_url) {
+                let videoId = extractYouTubeId(config.youtube_url);
+                if (videoId) {
+                    // Mute is required for autoplay in most modern browsers.
+                    // Loop requires playlist parameter equal to videoId.
+                    let embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1`;
+                    container.innerHTML = `<iframe src="${embedUrl}" allow="autoplay; encrypted-media" allowfullscreen></iframe>`;
+                } else {
+                    container.innerHTML = `<div>Invalid YouTube URL</div>`;
+                }
+            } else {
+                 container.innerHTML = `<div>No YouTube URL provided</div>`;
             }
         }
     }
 
-    // 5. Initial Load
-    loadLayout();
+    function extractYouTubeId(url) {
+        let regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+        let match = url.match(regExp);
+        return (match && match[2].length === 11) ? match[2] : null;
+    }
 
-    // 6. Connect to Server-Sent Events (SSE) for Real-Time Sync
+    // 5. Connect to Server-Sent Events (SSE) for Real-Time Sync
     function connectSSE() {
         console.log("Connecting to SSE...");
         let source = new EventSource('api/sse.php');
@@ -175,6 +235,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }, false);
     }
 
-    // Start SSE listener
+    // Initial sequence
+    initGrid();
+    loadLayout();
     connectSSE();
 });

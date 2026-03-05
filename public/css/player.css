@@ -12,19 +12,26 @@ body, html {
     /* Ensure no text selection, no user interference */
     user-select: none;
     cursor: none; /* Hide cursor by default on player screen */
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
+/*
+ * The grid-container must act as a perfect 16:9 box that fits
+ * within the screen exactly the same way the admin panel container does.
+ * We will calculate its dimensions dynamically via Javascript
+ * to ensure letterboxing/pillarboxing keeps the exact aspect ratio.
+ */
 .grid-container {
-    width: 100%;
-    height: 100%;
+    background-color: transparent;
     position: relative;
-    /* Maintain 16:9 ratio generally, but fill screen */
+    overflow: hidden;
 }
 
 .grid-stack {
-    width: 100vw;
-    height: 100vh;
-    background: #000;
+    width: 100%;
+    height: 100%;
 }
 
 /* GridStack item wrapper in player mode */
@@ -49,6 +56,8 @@ body, html {
     justify-content: center;
     text-align: center;
     overflow: hidden;
+    position: relative;
+    box-sizing: border-box;
 }
 
 /* Specific Widget Styles */
@@ -69,13 +78,11 @@ body, html {
 }
 .ticker-widget marquee {
     width: 100%;
-    font-size: 2vw;
 }
 
 .media-widget {
     width: 100%;
     height: 100%;
-    background-color: #000;
 }
 .media-widget img, .media-widget video {
     width: 100%;
@@ -90,9 +97,15 @@ body, html {
     justify-content: center;
     align-items: center;
 }
-.countdown-widget span {
-    font-size: 1.5vw;
+
+.youtube-widget {
+    width: 100%;
+    height: 100%;
+    background-color: #000;
 }
-.countdown-widget .time-left {
-    font-size: 4vw;
+.youtube-widget iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    pointer-events: none; /* Prevent user interaction with the video */
 }

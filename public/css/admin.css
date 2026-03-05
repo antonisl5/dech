@@ -210,17 +210,17 @@ header h1 {
     background-color: white;
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     border: 2px solid #ccc;
-    /* Aspect ratio 16:9 calculation for a container */
     width: 100%;
-    max-width: 1280px;
-    margin: 0 auto;
+    aspect-ratio: 16 / 9;
     position: relative;
+    overflow: hidden;
 }
 
 /* The actual grid area */
 .grid-stack {
+    width: 100%;
+    height: 100%;
     background: #fdfdfd;
-    min-height: 720px; /* Base height, adjust via js if needed */
 }
 
 /* Widget Content inside GridStack */
