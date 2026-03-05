@@ -6,8 +6,12 @@ header('Content-Type: application/json');
 try {
     $db = get_db_connection();
 
+    // Get screens
+    $stmt = $db->query("SELECT id, enabled, duration, transition FROM screens ORDER BY id ASC");
+    $screens = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
     // Get widgets
-    $stmt = $db->query("SELECT id, type, \"left\", top, width, height, z_index, config FROM widgets");
+    $stmt = $db->query("SELECT id, screen_id, type, \"left\", top, width, height, z_index, config FROM widgets");
     $widgets = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($widgets as &$w) {
@@ -28,6 +32,7 @@ try {
 
     echo json_encode([
         'success' => true,
+        'screens' => $screens,
         'widgets' => $widgets,
         'global_background_color' => $globalBgColor,
         'working_hours_start' => $whStart,

@@ -35,11 +35,20 @@ function init_db() {
         uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Since we are changing the schema from x/y/w/h to left/top/width/height/z_index,
-    // we must drop the old table first so the new layout builder can save successfully.
-    $db->exec("DROP TABLE IF EXISTS widgets");
+    // Create screens table for the multi-screen playlist carousel
+    $db->exec("CREATE TABLE IF NOT EXISTS screens (
+        id INTEGER PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        duration INTEGER NOT NULL DEFAULT 10,
+        transition TEXT NOT NULL DEFAULT 'fade'
+    )");
 
-    // Create widgets table (Updated schema)
+    // Insert default 5 screens if they don't exist
+    for ($i = 1; $i <= 5; $i++) {
+        $db->exec("INSERT OR IGNORE INTO screens (id, enabled, duration, transition) VALUES ($i, 1, 10, 'fade')");
+    }
+
+    // Create widgets table (Base schema)
     // Note: Wrapping "left" in quotes because it is a reserved SQL keyword
     $db->exec("CREATE TABLE IF NOT EXISTS widgets (
         id TEXT PRIMARY KEY,
@@ -53,11 +62,33 @@ function init_db() {
         last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    echo "Database initialized successfully.\n";
+    // Safe Migration: Add screen_id column if it doesn't exist to preserve existing layouts
+    $result = $db->query("PRAGMA table_info(widgets)");
+    $columns = $result->fetchAll(PDO::FETCH_ASSOC);
+    $hasScreenId = false;
+    foreach ($columns as $col) {
+        if ($col['name'] === 'screen_id') {
+            $hasScreenId = true;
+            break;
+        }
+    }
+
+    if (!$hasScreenId) {
+        // Add column and set all existing widgets to screen_id 1
+        $db->exec("ALTER TABLE widgets ADD COLUMN screen_id INTEGER NOT NULL DEFAULT 1 REFERENCES screens(id)");
+    }
+
+    // Ensure we don't spam output if required by another file
+    if (php_sapi_name() === 'cli' && basename(__FILE__) == basename($_SERVER["SCRIPT_FILENAME"])) {
+        echo "Database initialized successfully.\n";
+    }
 }
 
-// Only run initialization if this file is executed directly (e.g. from setup.sh)
+// Auto-run if hit via web request or required for the first time
+init_db();
+
+// Only output if executed directly from CLI
 if (php_sapi_name() === 'cli' && basename(__FILE__) == basename($_SERVER["SCRIPT_FILENAME"])) {
-    init_db();
+    // Already handled above
 }
 ?>

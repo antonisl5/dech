@@ -4,9 +4,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentLayoutData = null;
     let activeIntervals = {};
-    let activeTimeouts = {};
     let mainLoopInterval = null;
     let isSleeping = false;
+
+    // Playlist State
+    let enabledScreens = [];
+    let currentScreenIndex = 0;
+    let playlistTimeout = null;
 
     function initSSE() {
         const source = new EventSource('api/sse.php');
@@ -90,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 isSleeping = true;
                 sleepOverlay.style.display = 'block';
                 clearAllIntervals(); // Pause network and CPU heavy tasks
+                if (playlistTimeout) clearTimeout(playlistTimeout);
             }
         } else {
             if (isSleeping || playerContainer.innerHTML === '' || forceRender) {
@@ -110,61 +115,179 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         clearAllIntervals();
+        if (playlistTimeout) clearTimeout(playlistTimeout);
         playerContainer.innerHTML = '';
 
+        // 1. Setup Screens
+        enabledScreens = (data.screens || []).filter(s => s.enabled === 1).sort((a,b) => a.id - b.id);
+
+        if (enabledScreens.length === 0) {
+            // Fallback if none enabled
+            enabledScreens = [{id: 1, duration: 10, transition: 'fade'}];
+        }
+
+        // Group widgets by screen_id
+        const widgetsByScreen = {};
         data.widgets.forEach(w => {
-            const el = document.createElement('div');
-            el.className = `widget-item widget-${w.type}`;
-            el.id = 'p_' + w.id;
-
-            // Apply absolute percentages
-            el.style.left = w.left + '%';
-            el.style.top = w.top + '%';
-            el.style.width = w.width + '%';
-            el.style.height = w.height + '%';
-            el.style.zIndex = w.z_index;
-
-            const contentWrapper = document.createElement('div');
-            contentWrapper.className = 'content';
-            el.appendChild(contentWrapper);
-
-            playerContainer.appendChild(el);
-            renderWidgetContent(contentWrapper, w);
+            const sId = w.screen_id || 1;
+            if (!widgetsByScreen[sId]) widgetsByScreen[sId] = [];
+            widgetsByScreen[sId].push(w);
         });
+
+        // Render each enabled screen container
+        enabledScreens.forEach(screenData => {
+            const sEl = document.createElement('div');
+            sEl.className = `screen transition-${screenData.transition}`;
+            sEl.id = `screen-${screenData.id}`;
+            sEl.dataset.duration = screenData.duration;
+            sEl.dataset.transition = screenData.transition;
+
+            // Render widgets into this screen
+            const sWidgets = widgetsByScreen[screenData.id] || [];
+            sWidgets.forEach(w => {
+                const wEl = createWidgetElement(w);
+                sEl.appendChild(wEl);
+            });
+
+            playerContainer.appendChild(sEl);
+        });
+
+        // 2. Start Playlist Logic
+        currentScreenIndex = 0;
+        if (enabledScreens.length > 0) {
+            showScreen(currentScreenIndex);
+        }
     }
 
-    function renderWidgetContent(container, data) {
-        const c = data.config;
+    function createWidgetElement(w) {
+        const el = document.createElement('div');
+        el.className = `widget-item widget-${w.type}`;
+        el.id = 'p_' + w.id;
 
-        // Apply general styles
-        if (c.bgColor) container.parentElement.style.backgroundColor = c.bgColor;
-        if (c.textColor) container.parentElement.style.color = c.textColor;
-        if (c.fontSize) container.style.fontSize = c.fontSize + 'cqi';
+        // Apply absolute percentages
+        el.style.left = w.left + '%';
+        el.style.top = w.top + '%';
+        el.style.width = w.width + '%';
+        el.style.height = w.height + '%';
+        el.style.zIndex = w.z_index;
 
-        switch (data.type) {
+        const contentWrapper = document.createElement('div');
+        contentWrapper.className = 'content';
+        el.appendChild(contentWrapper);
+
+        // Store config data for later rendering when screen becomes active
+        el.dataset.config = JSON.stringify(w.config);
+        el.dataset.type = w.type;
+        el.dataset.id = w.id;
+
+        // Apply general static styles now
+        if (w.config.bgColor) el.style.backgroundColor = w.config.bgColor;
+        if (w.config.textColor) el.style.color = w.config.textColor;
+        if (w.config.fontSize) contentWrapper.style.fontSize = w.config.fontSize + 'cqi';
+
+        if (w.type === 'shape') {
+            if (w.config.shapeType === 'triangle') {
+                el.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
+            } else if (w.config.shapeType === 'oval') {
+                el.style.borderRadius = '50%';
+            }
+            if (w.config.borderRadius) {
+                el.style.borderRadius = w.config.borderRadius + '%';
+            }
+        }
+
+        return el;
+    }
+
+    function showScreen(index) {
+        if (isSleeping || enabledScreens.length === 0) return;
+
+        // Ensure index wraps around
+        if (index >= enabledScreens.length) {
+            index = 0;
+        }
+
+        // Hide all screens, clear exit classes, pause their heavy intervals
+        document.querySelectorAll('.screen').forEach(s => {
+            if (s.classList.contains('active')) {
+                // Apply exit animation based on its transition type
+                const trans = s.dataset.transition;
+                s.classList.add(`exit-${trans.split('-')[1] || trans}`); // map 'slide-left' to 'exit-left', 'fade' doesn't need one it just loses opacity
+            }
+            s.classList.remove('active');
+
+            // Cleanup intervals for widgets in this screen so they don't consume CPU when hidden
+            s.querySelectorAll('.widget-item').forEach(wEl => {
+                const widgetId = wEl.dataset.id;
+                if (activeIntervals[widgetId]) {
+                    clearInterval(activeIntervals[widgetId]);
+                    delete activeIntervals[widgetId];
+                }
+            });
+        });
+
+        const targetScreenData = enabledScreens[index];
+        const targetScreenEl = document.getElementById(`screen-${targetScreenData.id}`);
+
+        if (targetScreenEl) {
+            // Remove any previous exit classes before showing
+            const trans = targetScreenData.transition;
+            targetScreenEl.classList.remove(`exit-${trans.split('-')[1] || trans}`);
+
+            // Force a reflow to restart CSS animations if needed
+            void targetScreenEl.offsetWidth;
+
+            targetScreenEl.classList.add('active');
+
+            // Initialize/Resume widgets for this active screen
+            targetScreenEl.querySelectorAll('.widget-item').forEach(wEl => {
+                const config = JSON.parse(wEl.dataset.config);
+                const type = wEl.dataset.type;
+                const id = wEl.dataset.id;
+                const contentWrapper = wEl.querySelector('.content');
+
+                startWidget(contentWrapper, type, config, id);
+            });
+
+            // Schedule next screen transition
+            if (enabledScreens.length > 1) {
+                const durationMs = (parseInt(targetScreenData.duration) || 10) * 1000;
+                playlistTimeout = setTimeout(() => {
+                    showScreen(index + 1);
+                }, durationMs);
+            }
+        }
+    }
+
+    function startWidget(container, type, c, id) {
+        switch (type) {
             case 'clock':
                 updateClock(container, c);
-                activeIntervals[data.id] = setInterval(() => updateClock(container, c), 1000);
+                activeIntervals[id] = setInterval(() => updateClock(container, c), 1000);
                 break;
             case 'media':
-                if (c.mediaType === 'video') {
-                    container.innerHTML = `<video src="${c.mediaUrl}" autoplay muted loop style="width:100%;height:100%;object-fit:cover;"></video>`;
-                } else if (c.mediaUrl) {
-                    container.innerHTML = `<img src="${c.mediaUrl}" alt="media" style="width:100%;height:100%;object-fit:cover;">`;
+                // Only inject HTML once to avoid restarting video unnecessarily
+                if (container.innerHTML === '') {
+                    if (c.mediaType === 'video') {
+                        container.innerHTML = `<video src="${c.mediaUrl}" autoplay muted loop style="width:100%;height:100%;object-fit:cover;"></video>`;
+                    } else if (c.mediaUrl) {
+                        container.innerHTML = `<img src="${c.mediaUrl}" alt="media" style="width:100%;height:100%;object-fit:cover;">`;
+                    }
                 }
                 break;
             case 'ticker':
-                container.innerHTML = `<div class="ticker-text" style="color:${c.textColor}">${c.text}</div>`;
+                if (container.innerHTML === '') {
+                    container.innerHTML = `<div class="ticker-text" style="color:${c.textColor}">${c.text}</div>`;
+                }
                 break;
             case 'countdown':
                 updateCountdown(container, c);
-                activeIntervals[data.id] = setInterval(() => updateCountdown(container, c), 1000);
+                activeIntervals[id] = setInterval(() => updateCountdown(container, c), 1000);
                 break;
             case 'youtube':
-                if (c.youtubeUrl) {
+                if (container.innerHTML === '' && c.youtubeUrl) {
                     const videoId = extractYouTubeID(c.youtubeUrl);
                     if (videoId) {
-                        // Embed with autoplay, loop, mute, and hidden controls
                         container.innerHTML = `<iframe
                             src="https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&modestbranding=1"
                             allow="autoplay; encrypted-media"
@@ -173,24 +296,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 break;
-            case 'shape':
-                if (c.shapeType === 'triangle') {
-                    container.parentElement.style.clipPath = 'polygon(50% 0%, 0% 100%, 100% 100%)';
-                } else if (c.shapeType === 'oval') {
-                    container.parentElement.style.borderRadius = '50%'; // Base default for oval
-                }
-                // Always apply the custom border radius if the user has defined it
-                if (c.borderRadius) {
-                    container.parentElement.style.borderRadius = c.borderRadius + '%';
-                }
-                break;
             case 'freetext':
-                container.classList.add('freetext-content');
-                container.innerHTML = c.text; // Allows HTML like <br> or <b>
+                if (container.innerHTML === '') {
+                    container.classList.add('freetext-content');
+                    container.innerHTML = c.text;
+                }
                 break;
             case 'bambu':
                 fetchBambuData(container, c);
-                activeIntervals[data.id] = setInterval(() => fetchBambuData(container, c), 5000); // Poll every 5 seconds
+                activeIntervals[id] = setInterval(() => fetchBambuData(container, c), 5000);
                 break;
         }
     }
@@ -214,7 +328,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             el.innerHTML = new Intl.DateTimeFormat('en-US', opts).format(now);
         } catch (e) {
-            // Fallback if timezone is invalid
             el.innerHTML = new Intl.DateTimeFormat('en-US', {hour: '2-digit', minute:'2-digit', second:'2-digit'}).format(now);
         }
     }
@@ -243,7 +356,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
         const s = Math.floor((diff % (1000 * 60)) / 1000);
 
-        // Calculate total variations for partial displays
         const totalHours = Math.floor(diff / (1000 * 60 * 60));
         const totalMinutes = Math.floor(diff / (1000 * 60));
 
@@ -258,31 +370,19 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (format === 'minutes_seconds') {
             timeStr = `${totalMinutes.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
         } else {
-            // Full format (default)
             timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-            if (d > 0) {
-                timeStr = `${d}d ` + timeStr;
-            }
+            if (d > 0) timeStr = `${d}d ` + timeStr;
         }
 
         el.innerHTML = `<div>${config.eventName}<br>${timeStr}</div>`;
     }
 
     function fetchBambuData(el, config) {
-        // Fetch from the local Python Flask service
         fetch('http://localhost:5000/status')
             .then(res => res.json())
             .then(data => {
                 let printers = data;
-
-                // Map IDs to Names
-                const printerNames = {
-                    0: "P2S",
-                    1: "A1",
-                    2: "P1S"
-                };
-
-                // Determine which single printer we are looking for
+                const printerNames = { 0: "P2S", 1: "A1", 2: "P1S" };
                 const targetId = parseInt(config.printerId || '0');
                 const printer = printers.find(p => p.id === targetId);
 
@@ -293,27 +393,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const prog = printer.percent || 0;
                 const name = printerNames[printer.id] || `Printer ${printer.id}`;
-                // Apply color coding logic
-                let statusColor = '#cccccc'; // Default Gray
-                if (printer.status === 'RUNNING' || printer.status === 'PRINTING') {
-                    statusColor = '#00ff00'; // Green
-                } else if (printer.status === 'ERROR' || printer.status === 'FAILED') {
-                    statusColor = '#ff0000'; // Red
-                } else if (printer.status === 'FINISH' || printer.status === 'DONE') {
-                    statusColor = '#00aaff'; // Blue
-                }
+                let statusColor = '#cccccc';
+                if (printer.status === 'RUNNING' || printer.status === 'PRINTING') statusColor = '#00ff00';
+                else if (printer.status === 'ERROR' || printer.status === 'FAILED') statusColor = '#ff0000';
+                else if (printer.status === 'FINISH' || printer.status === 'DONE') statusColor = '#00aaff';
 
-                // Exactly one line of text: [Printer Name]: [Percentage]% | [Minutes] min
                 const textLine = `${name}: ${prog}% | ${printer.minutes || 0} min`;
 
-                // Base text HTML ensuring it scales and forces single line
                 let html = `
                     <div style="color: ${statusColor}; font-weight: bold; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                         ${textLine}
                     </div>
                 `;
 
-                // Optionally add the progress bar underneath
                 if (config.displayMode === 'text_bar') {
                     const thickness = parseInt(config.barThickness || '10');
                     html += `
@@ -323,7 +415,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                 }
 
-                // Wrap in flex container to center vertically/horizontally
                 el.innerHTML = `
                     <div style="width: 100%; padding: 10px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; align-items: center;">
                         ${html}
@@ -337,10 +428,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function clearAllIntervals() {
-        for (let id in activeIntervals) clearInterval(activeIntervals[id]);
+        for (let id in activeIntervals) {
+            clearInterval(activeIntervals[id]);
+        }
         activeIntervals = {};
-        for (let id in activeTimeouts) clearTimeout(activeTimeouts[id]);
-        activeTimeouts = {};
     }
 
     // Initial load and scaling

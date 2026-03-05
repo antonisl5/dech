@@ -11,25 +11,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
 
-    if (isset($data['widgets']) && is_array($data['widgets'])) {
+    if (isset($data['widgets']) && is_array($data['widgets']) && isset($data['screens']) && is_array($data['screens'])) {
         try {
             $db = get_db_connection();
 
             // Start transaction
             $db->beginTransaction();
 
-            // Clear old widgets
+            // 1. Update Screens
+            $stmtScreen = $db->prepare("UPDATE screens SET enabled = :enabled, duration = :duration, transition = :transition WHERE id = :id");
+            foreach ($data['screens'] as $screen) {
+                if (isset($screen['id'], $screen['enabled'], $screen['duration'], $screen['transition'])) {
+                    $stmtScreen->execute([
+                        ':id' => intval($screen['id']),
+                        ':enabled' => intval($screen['enabled']),
+                        ':duration' => intval($screen['duration']),
+                        ':transition' => $screen['transition']
+                    ]);
+                }
+            }
+
+            // 2. Clear old widgets
             $db->exec("DELETE FROM widgets");
 
-            $stmt = $db->prepare("INSERT INTO widgets (id, type, \"left\", top, width, height, z_index, config) VALUES (:id, :type, :left, :top, :width, :height, :z_index, :config)");
+            // 3. Insert new widgets
+            $stmtWidget = $db->prepare("INSERT INTO widgets (id, screen_id, type, \"left\", top, width, height, z_index, config) VALUES (:id, :screen_id, :type, :left, :top, :width, :height, :z_index, :config)");
 
             foreach ($data['widgets'] as $widget) {
                 // Validate essential fields
-                if (isset($widget['id'], $widget['type'], $widget['left'], $widget['top'], $widget['width'], $widget['height'], $widget['z_index'])) {
+                if (isset($widget['id'], $widget['screen_id'], $widget['type'], $widget['left'], $widget['top'], $widget['width'], $widget['height'], $widget['z_index'])) {
                     $config_json = isset($widget['config']) ? json_encode($widget['config']) : '{}';
 
-                    $stmt->execute([
+                    $stmtWidget->execute([
                         ':id' => $widget['id'],
+                        ':screen_id' => intval($widget['screen_id']),
                         ':type' => $widget['type'],
                         ':left' => floatval($widget['left']),
                         ':top' => floatval($widget['top']),
@@ -41,13 +56,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // Save global background color
+            // 4. Save global background color
             if (isset($data['global_background_color'])) {
                 $bgStmt = $db->prepare("INSERT INTO settings (key, value) VALUES ('global_background_color', :val) ON CONFLICT(key) DO UPDATE SET value = :val");
                 $bgStmt->execute([':val' => $data['global_background_color']]);
             }
 
-            // Save Working Hours
+            // 5. Save Working Hours
             if (isset($data['working_hours_start'])) {
                 $whStartStmt = $db->prepare("INSERT INTO settings (key, value) VALUES ('working_hours_start', :val) ON CONFLICT(key) DO UPDATE SET value = :val");
                 $whStartStmt->execute([':val' => $data['working_hours_start']]);

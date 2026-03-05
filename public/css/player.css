@@ -15,6 +15,85 @@ body {
     overflow: hidden;
 }
 
+/* --- Screen Transitions --- */
+.screen {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    opacity: 0;
+    visibility: hidden;
+    z-index: 1;
+}
+
+.screen.active {
+    opacity: 1;
+    visibility: visible;
+    z-index: 10;
+}
+
+/* 1. Fade */
+.transition-fade {
+    transition: opacity 1s ease-in-out, visibility 1s ease-in-out;
+}
+
+/* 2. Slide Left */
+.transition-slide-left {
+    transform: translateX(100%);
+    transition: transform 1s ease-in-out, opacity 1s ease-in-out, visibility 1s ease-in-out;
+}
+.transition-slide-left.active {
+    transform: translateX(0);
+}
+.transition-slide-left.exit-left {
+    transform: translateX(-100%);
+    opacity: 0;
+    visibility: hidden;
+}
+
+/* 3. Slide Up */
+.transition-slide-up {
+    transform: translateY(100%);
+    transition: transform 1s ease-in-out, opacity 1s ease-in-out, visibility 1s ease-in-out;
+}
+.transition-slide-up.active {
+    transform: translateY(0);
+}
+.transition-slide-up.exit-up {
+    transform: translateY(-100%);
+    opacity: 0;
+    visibility: hidden;
+}
+
+/* 4. Zoom In */
+.transition-zoom-in {
+    transform: scale(0.5);
+    transition: transform 1s ease-in-out, opacity 1s ease-in-out, visibility 1s ease-in-out;
+}
+.transition-zoom-in.active {
+    transform: scale(1);
+}
+.transition-zoom-in.exit-zoom {
+    transform: scale(1.5);
+    opacity: 0;
+    visibility: hidden;
+}
+
+/* 5. Flip */
+.transition-flip {
+    transform: rotateY(90deg);
+    transition: transform 1s ease-in-out, opacity 1s ease-in-out, visibility 1s ease-in-out;
+}
+.transition-flip.active {
+    transform: rotateY(0deg);
+}
+.transition-flip.exit-flip {
+    transform: rotateY(-90deg);
+    opacity: 0;
+    visibility: hidden;
+}
+
+
+/* --- Widget Styles --- */
 .widget-item {
     position: absolute;
     box-sizing: border-box;
@@ -87,6 +166,7 @@ body {
     width: 100%;
     height: 100%;
     border: none;
+    pointer-events: none; /* Prevent iframe grabbing focus */
 }
 
 /* Basic Shape */

@@ -25,7 +25,7 @@ require_login();
         <div class="admin-layout">
             <div class="sidebar">
                 <div class="global-settings">
-                    <h3>Canvas Settings</h3>
+                    <h3>Global Settings</h3>
                     <div class="form-group">
                         <label for="global-bg-color">Global Background Color</label>
                         <input type="color" id="global-bg-color" class="form-control" value="#000000">
@@ -84,6 +84,38 @@ require_login();
             </div>
 
             <div class="main-content">
+                <div class="screen-tabs-container">
+                    <div class="screen-tabs" id="screen-tabs">
+                        <div class="screen-tab active" data-screen-id="1">Screen 1</div>
+                        <div class="screen-tab" data-screen-id="2">Screen 2</div>
+                        <div class="screen-tab" data-screen-id="3">Screen 3</div>
+                        <div class="screen-tab" data-screen-id="4">Screen 4</div>
+                        <div class="screen-tab" data-screen-id="5">Screen 5</div>
+                    </div>
+
+                    <div class="screen-settings" id="screen-settings">
+                        <div class="form-group checkbox-group">
+                            <label for="screen-enabled">
+                                <input type="checkbox" id="screen-enabled" checked> Enable this screen
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label for="screen-duration">Duration (sec)</label>
+                            <input type="number" id="screen-duration" class="form-control" value="10" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="screen-transition">Transition</label>
+                            <select id="screen-transition" class="form-control">
+                                <option value="fade">Fade</option>
+                                <option value="slide-left">Slide Left</option>
+                                <option value="slide-up">Slide Up</option>
+                                <option value="zoom-in">Zoom In</option>
+                                <option value="flip">Flip</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Strict 16:9 Aspect Ratio Container Wrapper -->
                 <div class="aspect-ratio-wrapper">
                     <div class="grid-container" id="canvas-container">

@@ -19,9 +19,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnSendBackward = document.getElementById('btn-send-backward');
     const configZIndex = document.getElementById('config-z-index');
 
+    // Screen State Management
+    let currentScreenId = 1;
+    let screensData = [];
+
+    // UI Elements for Screen Settings
+    const screenTabs = document.querySelectorAll('.screen-tab');
+    const screenEnabledInput = document.getElementById('screen-enabled');
+    const screenDurationInput = document.getElementById('screen-duration');
+    const screenTransitionSelect = document.getElementById('screen-transition');
+
     let widgets = {};
     let selectedWidgetId = null;
     let draggedItemType = null;
+
+    // Initialize Default Screens if backend empty
+    function initDefaultScreens() {
+        for(let i=1; i<=5; i++) {
+            screensData.push({ id: i, enabled: 1, duration: 10, transition: 'fade' });
+        }
+    }
 
     // Load initial layout
     fetch('api/get_layout.php')
@@ -35,11 +52,76 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.working_hours_start) globalWhStartInput.value = data.working_hours_start;
                 if (data.working_hours_end) globalWhEndInput.value = data.working_hours_end;
 
+                if (data.screens && data.screens.length > 0) {
+                    screensData = data.screens;
+                } else {
+                    initDefaultScreens();
+                }
+
                 data.widgets.forEach(w => {
                     createWidgetElement(w);
                 });
+
+                // Set initial tab state
+                switchScreen(1);
+            }
+        })
+        .catch(err => {
+            console.error("Error loading layout:", err);
+            initDefaultScreens();
+            switchScreen(1);
+        });
+
+    // --- Screen Navigation Logic ---
+    screenTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const sId = parseInt(tab.dataset.screenId);
+            switchScreen(sId);
+        });
+    });
+
+    function switchScreen(screenId) {
+        currentScreenId = screenId;
+
+        // Update Tabs UI
+        screenTabs.forEach(t => t.classList.remove('active'));
+        document.querySelector(`.screen-tab[data-screen-id="${screenId}"]`).classList.add('active');
+
+        // Update Screen Settings UI
+        const sData = screensData.find(s => s.id === screenId);
+        if (sData) {
+            screenEnabledInput.checked = sData.enabled === 1;
+            screenDurationInput.value = sData.duration;
+            screenTransitionSelect.value = sData.transition;
+        }
+
+        // Filter Widgets on Canvas
+        document.querySelectorAll('.widget-item').forEach(el => {
+            const wData = widgets[el.id];
+            if (wData.screen_id === currentScreenId) {
+                el.classList.remove('hidden-screen');
+            } else {
+                el.classList.add('hidden-screen');
+                el.classList.remove('is-selected'); // Deselect if hidden
             }
         });
+
+        selectedWidgetId = null;
+    }
+
+    // Bind Screen Setting Inputs to Data
+    screenEnabledInput.addEventListener('change', (e) => {
+        const s = screensData.find(x => x.id === currentScreenId);
+        if(s) s.enabled = e.target.checked ? 1 : 0;
+    });
+    screenDurationInput.addEventListener('input', (e) => {
+        const s = screensData.find(x => x.id === currentScreenId);
+        if(s) s.duration = parseInt(e.target.value) || 10;
+    });
+    screenTransitionSelect.addEventListener('change', (e) => {
+        const s = screensData.find(x => x.id === currentScreenId);
+        if(s) s.transition = e.target.value;
+    });
 
     // Global Background Color Live Update
     globalBgColorInput.addEventListener('input', (e) => {
@@ -74,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const newWidgetData = {
                 id: 'w_' + Date.now(),
+                screen_id: currentScreenId,
                 type: draggedItemType,
                 left: Math.max(0, Math.min(leftPct, 80)), // 20% width default
                 top: Math.max(0, Math.min(topPct, 80)), // 20% height default
@@ -133,11 +216,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function createWidgetElement(wData) {
+        // Ensure legacy widgets get a screen_id
+        if (!wData.screen_id) wData.screen_id = 1;
+
         widgets[wData.id] = wData;
 
         const el = document.createElement('div');
         el.className = `widget-item widget-${wData.type}`;
         el.id = wData.id;
+
+        // Hide if not on current screen
+        if (wData.screen_id !== currentScreenId) {
+            el.classList.add('hidden-screen');
+        }
 
         // Apply CSS absolute percentages
         el.style.left = wData.left + '%';
@@ -242,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- INTERACT.JS LOGIC FOR DRAG AND RESIZE ---
-    interact('.widget-item')
+    interact('.widget-item:not(.hidden-screen)')
         .draggable({
             inertia: true,
             modifiers: [
@@ -326,7 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === canvasContainer) {
             document.querySelectorAll('.widget-item').forEach(el => {
                 el.classList.remove('is-selected');
-                el.style.zIndex = widgets[el.id].z_index; // restore real z-index
+                if (widgets[el.id]) el.style.zIndex = widgets[el.id].z_index; // restore real z-index
             });
             selectedWidgetId = null;
         }
@@ -530,12 +621,13 @@ document.addEventListener('DOMContentLoaded', () => {
         configModal.style.display = 'none';
     });
 
-    // Save Layout
+    // Save Layout (including Screens array)
     saveLayoutBtn.addEventListener('click', () => {
         const layoutData = {
             global_background_color: globalBgColorInput.value,
             working_hours_start: globalWhStartInput.value,
             working_hours_end: globalWhEndInput.value,
+            screens: screensData,
             widgets: Object.values(widgets)
         };
 

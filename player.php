@@ -7,9 +7,9 @@
     <link rel="stylesheet" href="public/css/player.css">
 </head>
 <body>
-    <!-- Full-screen absolute canvas container -->
+    <!-- Full-screen absolute canvas container (16:9 Aspect Ratio) -->
     <div id="player-container" class="grid-container">
-        <!-- Widgets loaded via SSE and JSON -->
+        <!-- Screens and Widgets loaded via SSE and JSON -->
     </div>
 
     <!-- Black overlay for non-working hours to save screen/CPU -->
@@ -23,6 +23,24 @@
             width: 100vw; height: 100vh;
             overflow: hidden;
             background-color: #000; /* Overridden by global settings */
+        }
+
+        .screen {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            /* Hide by default, show when active */
+            opacity: 0;
+            visibility: hidden;
+            z-index: 1;
+            /* Container for fluid typography */
+            container-type: size;
+        }
+
+        .screen.active {
+            opacity: 1;
+            visibility: visible;
+            z-index: 10;
         }
 
         .widget-item {
