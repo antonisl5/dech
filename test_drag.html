@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link href="https://cdn.jsdelivr.net/npm/gridstack@7.2.3/dist/gridstack.min.css" rel="stylesheet"/>
+  <style>
+    .sidebar { width: 200px; float: left; }
+    .new-widget { border: 1px solid #ccc; background: #eee; margin: 10px; cursor: grab; }
+    .grid-container { margin-left: 220px; background: #fafafa; min-height: 300px; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="new-widget grid-stack-item" data-type="clock" gs-w="2" gs-h="2">
+      <div class="grid-stack-item-content">Clock Widget</div>
+    </div>
+  </div>
+  <div class="grid-container">
+    <div class="grid-stack" id="layoutGrid"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gridstack@7.2.3/dist/gridstack-all.js"></script>
+  <script>
+    let grid = GridStack.init({
+      cellHeight: 60,
+      acceptWidgets: true,
+      dragIn: '.new-widget',
+      dragInOptions: { appendTo: 'body', helper: 'clone' }
+    });
+    grid.on('added', function(e, items) {
+      console.log('Added:', items);
+    });
+  </script>
+</body>
+</html>

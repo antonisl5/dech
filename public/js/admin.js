@@ -5,8 +5,6 @@ document.addEventListener('DOMContentLoaded', function () {
     let grid = GridStack.init({
         cellHeight: 60,
         acceptWidgets: true,
-        dragIn: '.new-widget',
-        dragInOptions: { appendTo: 'body', helper: 'clone' },
         margin: 5,
         column: 12,
         float: true

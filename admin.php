@@ -30,21 +30,29 @@ require_login();
                 <p>Drag widgets onto the layout.</p>
                 <div class="widget-list">
                     <!-- The class "grid-stack-item" makes it draggable into gridstack -->
-                    <div class="new-widget" data-type="clock">
-                        <div class="widget-icon">🕒</div>
-                        <span>Digital Clock</span>
+                    <div class="new-widget grid-stack-item ui-draggable" data-type="clock" gs-w="2" gs-h="2">
+                        <div class="grid-stack-item-content">
+                            <div class="widget-icon">🕒</div>
+                            <span>Digital Clock</span>
+                        </div>
                     </div>
-                    <div class="new-widget" data-type="media">
-                        <div class="widget-icon">🖼️</div>
-                        <span>Media Viewer</span>
+                    <div class="new-widget grid-stack-item ui-draggable" data-type="media" gs-w="4" gs-h="3">
+                        <div class="grid-stack-item-content">
+                            <div class="widget-icon">🖼️</div>
+                            <span>Media Viewer</span>
+                        </div>
                     </div>
-                    <div class="new-widget" data-type="ticker">
-                        <div class="widget-icon">📜</div>
-                        <span>Text Ticker</span>
+                    <div class="new-widget grid-stack-item ui-draggable" data-type="ticker" gs-w="12" gs-h="1">
+                        <div class="grid-stack-item-content">
+                            <div class="widget-icon">📜</div>
+                            <span>Text Ticker</span>
+                        </div>
                     </div>
-                    <div class="new-widget" data-type="countdown">
-                        <div class="widget-icon">⏳</div>
-                        <span>Countdown</span>
+                    <div class="new-widget grid-stack-item ui-draggable" data-type="countdown" gs-w="2" gs-h="2">
+                        <div class="grid-stack-item-content">
+                            <div class="widget-icon">⏳</div>
+                            <span>Countdown</span>
+                        </div>
                     </div>
                 </div>
             </div>
