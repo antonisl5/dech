@@ -7,7 +7,7 @@ try {
     $db = get_db_connection();
 
     // Get screens
-    $stmt = $db->query("SELECT id, enabled, duration, transition FROM screens ORDER BY id ASC");
+    $stmt = $db->query("SELECT id, player1_enabled, player2_enabled, duration, transition FROM screens ORDER BY id ASC");
     $screens = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Get widgets

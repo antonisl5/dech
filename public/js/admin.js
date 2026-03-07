@@ -25,18 +25,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // UI Elements for Screen Settings
     const screenTabs = document.querySelectorAll('.screen-tab');
-    const screenEnabledInput = document.getElementById('screen-enabled');
+    const screenPlayer1Input = document.getElementById('screen-player1');
+    const screenPlayer2Input = document.getElementById('screen-player2');
     const screenDurationInput = document.getElementById('screen-duration');
     const screenTransitionSelect = document.getElementById('screen-transition');
 
+    // Guides
+    const guideV = document.getElementById('guide-v');
+    const guideH = document.getElementById('guide-h');
+
     let widgets = {};
-    let selectedWidgetId = null;
+    let selectedWidgetIds = new Set();
     let draggedItemType = null;
 
     // Initialize Default Screens if backend empty
     function initDefaultScreens() {
         for(let i=1; i<=5; i++) {
-            screensData.push({ id: i, enabled: 1, duration: 10, transition: 'fade' });
+            screensData.push({ id: i, player1_enabled: 1, player2_enabled: 0, duration: 10, transition: 'fade' });
         }
     }
 
@@ -90,7 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update Screen Settings UI
         const sData = screensData.find(s => s.id === screenId);
         if (sData) {
-            screenEnabledInput.checked = sData.enabled === 1;
+            screenPlayer1Input.checked = sData.player1_enabled === 1 || sData.player1_enabled === true;
+            screenPlayer2Input.checked = sData.player2_enabled === 1 || sData.player2_enabled === true;
             screenDurationInput.value = sData.duration;
             screenTransitionSelect.value = sData.transition;
         }
@@ -106,13 +112,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        selectedWidgetId = null;
+        selectedWidgetIds.clear();
     }
 
     // Bind Screen Setting Inputs to Data
-    screenEnabledInput.addEventListener('change', (e) => {
+    screenPlayer1Input.addEventListener('change', (e) => {
         const s = screensData.find(x => x.id === currentScreenId);
-        if(s) s.enabled = e.target.checked ? 1 : 0;
+        if(s) s.player1_enabled = e.target.checked ? 1 : 0;
+    });
+    screenPlayer2Input.addEventListener('change', (e) => {
+        const s = screensData.find(x => x.id === currentScreenId);
+        if(s) s.player2_enabled = e.target.checked ? 1 : 0;
     });
     screenDurationInput.addEventListener('input', (e) => {
         const s = screensData.find(x => x.id === currentScreenId);
@@ -251,11 +261,45 @@ document.addEventListener('DOMContentLoaded', () => {
         renderWidgetContent(el, wData);
 
         // Click to select and open config
-        el.addEventListener('mousedown', () => {
-            selectWidget(wData.id);
+        el.addEventListener('mousedown', (e) => {
+            handleWidgetSelection(wData.id, e);
         });
         el.addEventListener('dblclick', () => {
+            // Can only configure one at a time, clear others
+            selectedWidgetIds.clear();
+            selectedWidgetIds.add(wData.id);
+            updateSelectionVisuals();
             openConfigModal(wData.id);
+        });
+    }
+
+    function handleWidgetSelection(id, event) {
+        if (event.ctrlKey || event.metaKey) {
+            // Toggle selection
+            if (selectedWidgetIds.has(id)) {
+                selectedWidgetIds.delete(id);
+            } else {
+                selectedWidgetIds.add(id);
+            }
+        } else {
+            // Single select (unless dragging an already selected item in a group)
+            if (!selectedWidgetIds.has(id)) {
+                selectedWidgetIds.clear();
+                selectedWidgetIds.add(id);
+            }
+        }
+        updateSelectionVisuals();
+    }
+
+    function updateSelectionVisuals() {
+        document.querySelectorAll('.widget-item').forEach(el => {
+            if (selectedWidgetIds.has(el.id)) {
+                el.classList.add('is-selected');
+                el.style.zIndex = parseInt(widgets[el.id].z_index) + 100; // bring to front visually
+            } else {
+                el.classList.remove('is-selected');
+                if (widgets[el.id]) el.style.zIndex = widgets[el.id].z_index; // restore real z-index
+            }
         });
     }
 
@@ -332,10 +376,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Smart Alignment Guide Logic
+    const SNAP_THRESHOLD = 1.5; // percentage points
+    let dragVirtualX = null;
+    let dragVirtualY = null;
+
+    function getSnapTargets(currentWidgetId) {
+        let targets = {
+            h: [0, 50, 100], // Horizontal snaps (left, center, right of canvas)
+            v: [0, 50, 100]  // Vertical snaps (top, middle, bottom of canvas)
+        };
+
+        // Add other widgets on current screen
+        Object.values(widgets).forEach(w => {
+            if (w.screen_id === currentScreenId && w.id !== currentWidgetId) {
+                // Vertical lines (X axis)
+                targets.v.push(w.left);
+                targets.v.push(w.left + (w.width / 2));
+                targets.v.push(w.left + w.width);
+                // Horizontal lines (Y axis)
+                targets.h.push(w.top);
+                targets.h.push(w.top + (w.height / 2));
+                targets.h.push(w.top + w.height);
+            }
+        });
+        return targets;
+    }
+
+    function checkSnap(value, targets) {
+        for (let t of targets) {
+            if (Math.abs(value - t) < SNAP_THRESHOLD) {
+                return t;
+            }
+        }
+        return null;
+    }
+
     // --- INTERACT.JS LOGIC FOR DRAG AND RESIZE ---
     interact('.widget-item:not(.hidden-screen)')
         .draggable({
-            inertia: true,
+            inertia: false,
             modifiers: [
                 interact.modifiers.restrictRect({
                     restriction: 'parent',
@@ -345,23 +425,85 @@ document.addEventListener('DOMContentLoaded', () => {
             autoScroll: true,
             listeners: {
                 start(event) {
-                    selectWidget(event.target.id);
+                    const id = event.target.id;
+                    if (!selectedWidgetIds.has(id)) {
+                        handleWidgetSelection(id, event);
+                    }
+                    if (selectedWidgetIds.size === 1) {
+                        const wData = widgets[id];
+                        dragVirtualX = wData.left;
+                        dragVirtualY = wData.top;
+                    }
                 },
                 move(event) {
-                    const target = event.target;
-                    const id = target.id;
-                    const wData = widgets[id];
-
-                    // Convert pixel movement to percentages relative to container
                     const rect = canvasContainer.getBoundingClientRect();
                     const dxPct = (event.dx / rect.width) * 100;
                     const dyPct = (event.dy / rect.height) * 100;
 
-                    wData.left += dxPct;
-                    wData.top += dyPct;
+                    // If dragging a single item, apply smart alignment
+                    let snappedX = false;
+                    let snappedY = false;
+                    const primaryId = event.target.id;
+                    const primaryW = widgets[primaryId];
 
-                    target.style.left = wData.left + '%';
-                    target.style.top = wData.top + '%';
+                    if (selectedWidgetIds.size === 1) {
+                        const targets = getSnapTargets(primaryId);
+
+                        // Accumulate virtual position
+                        dragVirtualX += dxPct;
+                        dragVirtualY += dyPct;
+
+                        // Predict next position from virtual mouse center
+                        let nextLeft = dragVirtualX;
+                        let nextTop = dragVirtualY;
+
+                        // Check points: Left edge, Center, Right edge
+                        let snapL = checkSnap(nextLeft, targets.v);
+                        let snapCx = checkSnap(nextLeft + (primaryW.width / 2), targets.v);
+                        let snapR = checkSnap(nextLeft + primaryW.width, targets.v);
+
+                        if (snapL !== null) { nextLeft = snapL; snappedX = true; guideV.style.left = snapL + '%'; }
+                        else if (snapCx !== null) { nextLeft = snapCx - (primaryW.width / 2); snappedX = true; guideV.style.left = snapCx + '%'; }
+                        else if (snapR !== null) { nextLeft = snapR - primaryW.width; snappedX = true; guideV.style.left = snapR + '%'; }
+
+                        // Check points: Top edge, Middle, Bottom edge
+                        let snapT = checkSnap(nextTop, targets.h);
+                        let snapCy = checkSnap(nextTop + (primaryW.height / 2), targets.h);
+                        let snapB = checkSnap(nextTop + primaryW.height, targets.h);
+
+                        if (snapT !== null) { nextTop = snapT; snappedY = true; guideH.style.top = snapT + '%'; }
+                        else if (snapCy !== null) { nextTop = snapCy - (primaryW.height / 2); snappedY = true; guideH.style.top = snapCy + '%'; }
+                        else if (snapB !== null) { nextTop = snapB - primaryW.height; snappedY = true; guideH.style.top = snapB + '%'; }
+
+                        // Display guides
+                        guideV.style.display = snappedX ? 'block' : 'none';
+                        guideH.style.display = snappedY ? 'block' : 'none';
+
+                        // Apply snapped or raw delta
+                        primaryW.left = nextLeft;
+                        primaryW.top = nextTop;
+                        event.target.style.left = primaryW.left + '%';
+                        event.target.style.top = primaryW.top + '%';
+                    } else {
+                        // Multi-selection drag (No snap, just raw delta to all selected)
+                        guideV.style.display = 'none';
+                        guideH.style.display = 'none';
+
+                        selectedWidgetIds.forEach(id => {
+                            const wData = widgets[id];
+                            wData.left += dxPct;
+                            wData.top += dyPct;
+                            const el = document.getElementById(id);
+                            if (el) {
+                                el.style.left = wData.left + '%';
+                                el.style.top = wData.top + '%';
+                            }
+                        });
+                    }
+                },
+                end(event) {
+                    guideV.style.display = 'none';
+                    guideH.style.display = 'none';
                 }
             }
         })
@@ -376,21 +518,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     min: { width: 50, height: 50 } // min 50px
                 })
             ],
-            inertia: true,
+            inertia: false,
             listeners: {
                 start(event) {
-                    selectWidget(event.target.id);
+                    const id = event.target.id;
+                    if (!selectedWidgetIds.has(id)) {
+                        handleWidgetSelection(id, event);
+                    }
                 },
                 move: function (event) {
-                    let { x, y } = event.target.dataset;
-                    const target = event.target;
-                    const id = target.id;
-                    const wData = widgets[id];
                     const rect = canvasContainer.getBoundingClientRect();
 
                     // Convert pixel size to percentages
                     const widthPct = (event.rect.width / rect.width) * 100;
                     const heightPct = (event.rect.height / rect.height) * 100;
+
+                    // If multi-selected, optionally resize all (For now, just resize the one being dragged for safety,
+                    // or apply delta. We will apply raw values to primary to keep it simple, or apply delta to all).
+                    // As requested, moving group is priority. Resizing group is complex because of aspect ratios.
+                    // Let's just resize the primary target for now to avoid weird behaviors.
+
+                    const target = event.target;
+                    const id = target.id;
+                    const wData = widgets[id];
 
                     wData.width = widthPct;
                     wData.height = heightPct;
@@ -401,25 +551,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-    function selectWidget(id) {
-        document.querySelectorAll('.widget-item').forEach(el => el.classList.remove('is-selected'));
-        const el = document.getElementById(id);
-        if (el) {
-            el.classList.add('is-selected');
-            selectedWidgetId = id;
-            // Bring to top visually during interaction without saving yet
-            el.style.zIndex = parseInt(widgets[id].z_index) + 100;
-        }
-    }
-
     // Deselect on clicking canvas background
     canvasContainer.addEventListener('mousedown', (e) => {
         if (e.target === canvasContainer) {
-            document.querySelectorAll('.widget-item').forEach(el => {
-                el.classList.remove('is-selected');
-                if (widgets[el.id]) el.style.zIndex = widgets[el.id].z_index; // restore real z-index
-            });
-            selectedWidgetId = null;
+            selectedWidgetIds.clear();
+            updateSelectionVisuals();
         }
     });
 
@@ -618,6 +754,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const id = configWidgetId.value;
         document.getElementById(id).remove();
         delete widgets[id];
+        selectedWidgetIds.delete(id);
         configModal.style.display = 'none';
     });
 

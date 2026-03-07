@@ -19,12 +19,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $db->beginTransaction();
 
             // 1. Update Screens
-            $stmtScreen = $db->prepare("UPDATE screens SET enabled = :enabled, duration = :duration, transition = :transition WHERE id = :id");
+            $stmtScreen = $db->prepare("UPDATE screens SET player1_enabled = :p1, player2_enabled = :p2, duration = :duration, transition = :transition WHERE id = :id");
             foreach ($data['screens'] as $screen) {
-                if (isset($screen['id'], $screen['enabled'], $screen['duration'], $screen['transition'])) {
+                if (isset($screen['id'], $screen['player1_enabled'], $screen['player2_enabled'], $screen['duration'], $screen['transition'])) {
                     $stmtScreen->execute([
                         ':id' => intval($screen['id']),
-                        ':enabled' => intval($screen['enabled']),
+                        ':p1' => intval($screen['player1_enabled']),
+                        ':p2' => intval($screen['player2_enabled']),
                         ':duration' => intval($screen['duration']),
                         ':transition' => $screen['transition']
                     ]);

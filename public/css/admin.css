@@ -172,6 +172,27 @@ html, body {
     container-name: canvas;
 }
 
+/* --- Smart Alignment Guides --- */
+.guide-line {
+    position: absolute;
+    background-color: #ff00ff; /* Magenta for high visibility */
+    z-index: 9999;
+    pointer-events: none;
+    display: none; /* Hidden by default */
+}
+
+.guide-line-v {
+    width: 1px;
+    height: 100%;
+    top: 0;
+}
+
+.guide-line-h {
+    height: 1px;
+    width: 100%;
+    left: 0;
+}
+
 /* --- Widgets inside the Canvas --- */
 .widget-item {
     position: absolute;
@@ -195,9 +216,12 @@ html, body {
     cursor: grabbing;
 }
 
+/* Multi-selection styles */
 .widget-item.is-selected {
     border: 2px solid #007bff;
     background-color: rgba(0, 123, 255, 0.2);
+    /* Bring multi-selected items visually forward slightly during drag */
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
 }
 
 .resize-handle {

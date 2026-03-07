@@ -36,16 +36,39 @@ function init_db() {
     )");
 
     // Create screens table for the multi-screen playlist carousel
+    // (Legacy schema creates without player1/2 columns if it existed before,
+    // but the IF NOT EXISTS will create it with them if fresh)
     $db->exec("CREATE TABLE IF NOT EXISTS screens (
         id INTEGER PRIMARY KEY,
         enabled INTEGER NOT NULL DEFAULT 1,
+        player1_enabled INTEGER NOT NULL DEFAULT 1,
+        player2_enabled INTEGER NOT NULL DEFAULT 0,
         duration INTEGER NOT NULL DEFAULT 10,
         transition TEXT NOT NULL DEFAULT 'fade'
     )");
 
+    // Safe Migration: Add player1_enabled and player2_enabled columns to screens if they don't exist
+    $resultScreens = $db->query("PRAGMA table_info(screens)");
+    $columnsScreens = $resultScreens->fetchAll(PDO::FETCH_ASSOC);
+    $hasP1 = false;
+    foreach ($columnsScreens as $col) {
+        if ($col['name'] === 'player1_enabled') {
+            $hasP1 = true;
+            break;
+        }
+    }
+
+    if (!$hasP1) {
+        $db->exec("ALTER TABLE screens ADD COLUMN player1_enabled INTEGER NOT NULL DEFAULT 1");
+        $db->exec("ALTER TABLE screens ADD COLUMN player2_enabled INTEGER NOT NULL DEFAULT 0");
+        // Migrate data: use 'enabled' value for player 1 by default
+        $db->exec("UPDATE screens SET player1_enabled = enabled");
+    }
+
     // Insert default 5 screens if they don't exist
+    // It's safe to do this here because the table definitely has the columns now
     for ($i = 1; $i <= 5; $i++) {
-        $db->exec("INSERT OR IGNORE INTO screens (id, enabled, duration, transition) VALUES ($i, 1, 10, 'fade')");
+        $db->exec("INSERT OR IGNORE INTO screens (id, enabled, player1_enabled, player2_enabled, duration, transition) VALUES ($i, 1, 1, 0, 10, 'fade')");
     }
 
     // Create widgets table (Base schema)
@@ -63,10 +86,10 @@ function init_db() {
     )");
 
     // Safe Migration: Add screen_id column if it doesn't exist to preserve existing layouts
-    $result = $db->query("PRAGMA table_info(widgets)");
-    $columns = $result->fetchAll(PDO::FETCH_ASSOC);
+    $resultWidgets = $db->query("PRAGMA table_info(widgets)");
+    $columnsWidgets = $resultWidgets->fetchAll(PDO::FETCH_ASSOC);
     $hasScreenId = false;
-    foreach ($columns as $col) {
+    foreach ($columnsWidgets as $col) {
         if ($col['name'] === 'screen_id') {
             $hasScreenId = true;
             break;

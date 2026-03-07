@@ -2,6 +2,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const playerContainer = document.getElementById('player-container');
     const sleepOverlay = document.getElementById('sleep-overlay');
 
+    // Determine Player ID from URL (e.g. ?id=2), default to 1
+    const urlParams = new URLSearchParams(window.location.search);
+    const playerId = parseInt(urlParams.get('id') || '1');
+
     let currentLayoutData = null;
     let activeIntervals = {};
     let mainLoopInterval = null;
@@ -118,12 +122,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (playlistTimeout) clearTimeout(playlistTimeout);
         playerContainer.innerHTML = '';
 
-        // 1. Setup Screens
-        enabledScreens = (data.screens || []).filter(s => s.enabled === 1).sort((a,b) => a.id - b.id);
+        // 1. Setup Screens (Filter based on Player ID)
+        enabledScreens = (data.screens || [])
+            .filter(s => {
+                if (playerId === 2) return s.player2_enabled === 1;
+                return s.player1_enabled === 1; // Default to player 1
+            })
+            .sort((a,b) => a.id - b.id);
 
         if (enabledScreens.length === 0) {
-            // Fallback if none enabled
-            enabledScreens = [{id: 1, duration: 10, transition: 'fade'}];
+            // Fallback if none enabled for this player
+            playerContainer.innerHTML = `<div style="color:#aaa; display:flex; width:100%; height:100%; align-items:center; justify-content:center;">No screens assigned to Player ${playerId}.</div>`;
+            return;
         }
 
         // Group widgets by screen_id

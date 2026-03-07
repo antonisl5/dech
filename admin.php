@@ -42,7 +42,7 @@ require_login();
                 </div>
 
                 <h3>Available Widgets</h3>
-                <p style="font-size: 0.9em; color: #aaa;">Drag a widget to add it to the canvas, then drag and resize.</p>
+                <p style="font-size: 0.9em; color: #aaa;">Drag a widget to add it to the canvas, then drag and resize. <br><strong style="color: #fff;">Tip:</strong> Ctrl+Click to multi-select and move groups.</p>
                 <div id="widget-list">
                     <div class="new-widget" data-type="clock" draggable="true">
                         <div class="widget-icon">⏰</div> Clock
@@ -95,11 +95,16 @@ require_login();
 
                     <div class="screen-settings" id="screen-settings">
                         <div class="form-group checkbox-group">
-                            <label for="screen-enabled">
-                                <input type="checkbox" id="screen-enabled" checked> Enable this screen
+                            <label for="screen-player1">
+                                <input type="checkbox" id="screen-player1" checked> Show on Player 1
                             </label>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group checkbox-group" style="margin-left: 10px;">
+                            <label for="screen-player2">
+                                <input type="checkbox" id="screen-player2"> Show on Player 2
+                            </label>
+                        </div>
+                        <div class="form-group" style="margin-left: 20px;">
                             <label for="screen-duration">Duration (sec)</label>
                             <input type="number" id="screen-duration" class="form-control" value="10" min="1">
                         </div>
@@ -119,6 +124,9 @@ require_login();
                 <!-- Strict 16:9 Aspect Ratio Container Wrapper -->
                 <div class="aspect-ratio-wrapper">
                     <div class="grid-container" id="canvas-container">
+                        <!-- Smart Alignment Guides -->
+                        <div class="guide-line guide-line-v" id="guide-v"></div>
+                        <div class="guide-line guide-line-h" id="guide-h"></div>
                         <!-- Widgets placed here via interact.js -->
                     </div>
                 </div>
